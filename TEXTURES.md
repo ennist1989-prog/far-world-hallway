@@ -187,3 +187,37 @@ No new third-party scans were introduced. Local derivatives only (geometric cons
 ## v4.3 water runs (constructed, no AI)
 
 - `textures/run_1.png` … `run_5.png` (384×1536 RGBA): procedurally painted stain decals (hashed value-noise, no generative AI). Each has an irregular meandering wet core that widens as it descends, a brown tide-mark fringe, a soft staining fan, a baked subtle wet sheen, and a mottled green algae patch with alpha falloff at the foot. Used as a single world-space wall quad per run (no solid box columns).
+
+
+## v4.4 photo-scan water stains (CC0, no AI)
+
+Replaced the v4.3 procedural box/canvas runs with real photo-scan decals prepared from `/workspace/game2-art/water-stains/` (Ember's pack). Used as decals, not as tiling wallpaper. Each streak is 0.4–1.2 m, top anchored at a crack end, fanning down. Wet-path roughness baked to 0.25–0.4 (vs ~0.85 dry wallpaper). Algae is a masked patch 20–40 cm above the baseboard, plus a damp carpet puddle. No generative AI.
+
+### Leaking006 — primary leak (ambientCG)
+
+- Source: https://ambientcg.com/a/Leaking006
+- License: CC0 1.0 Universal (https://docs.ambientcg.com/license/)
+- Author: not individually listed on the asset page (published by ambientCG)
+- Creation: height-field photogrammetry; real photographed leak (PBRApproximated)
+- Local derived: `textures/stain_leak.png` (Color × Opacity, top ~8% cropped to remove the pipe so the streak starts at a crack end), `textures/stain_leak_rough.jpg` (official roughness remapped to 0.25–0.4 on the wet path). A brown tide-mark fringe was composited from concrete_wall_005 along the leak edge, tinted toward `#6b5233`–`#4a3a24`.
+
+### decrepit_wallpaper — secondary thin runs (Poly Haven)
+
+- Source: https://polyhaven.com/a/decrepit_wallpaper
+- License: CC0 1.0 (https://polyhaven.com/license)
+- Author: Rob Tuytel
+- Local derived: `textures/stain_thin1.png`, `stain_thin2.png` (luminance-alpha of darker vertical water/grime runs, tinted `#6b5233`–`#4a3a24`) and matching `*_rough.jpg`. Not used as a wallpaper tile.
+
+### concrete_wall_005 — tide-mark halo (Poly Haven)
+
+- Source: https://polyhaven.com/a/concrete_wall_005
+- License: CC0 1.0
+- Authors: Dimitrios Savva (Photography), Dario Barresi (Processing)
+- Used as the ochre/brown tide-mark fringe baked into the leak and thin-run decals (chroma around the upper-third water line; grey plaster discarded).
+
+### worn_mossy_plasterwall — algae pool (Poly Haven)
+
+- Source: https://polyhaven.com/a/worn_mossy_plasterwall
+- License: CC0 1.0
+- Author: Amal Kumar
+- Local derived: `textures/stain_algae.png` (chroma-masked greens/dark dirt, tinted `#2e3a1c`–`#4a5a26`, soft falloff so it is not a solid quad). Placed 20–40 cm above the baseboard at the foot of each run.

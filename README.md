@@ -1,4 +1,4 @@
-# Far World — Hallway Pilot (v4.3)
+# Far World — Hallway Pilot (v4.4)
 
 A self-contained playable 3D hallway slice for Far World. Open the site in a desktop browser and click to start.
 
@@ -12,6 +12,7 @@ This is a public research pilot, not the full game. It is a separate project fro
 - Walk with `W` or by holding the mouse button
 - Look with the mouse, or drag if pointer lock is unavailable
 - Arrow keys turn in place
+- Press `E`, Enter, or click to pick up
 - Press `O` to toggle screen effects
 
 ## Credits
@@ -22,6 +23,6 @@ Full source, license, and file credits are in [TEXTURES.md](TEXTURES.md). Source
 
 ## Build
 
-The site serves a single self-contained `index.html` (hallway v4.3).
+The site serves a single self-contained `index.html` (hallway v4.4).
 
-- sha256: `51c9341526b086342567e0b2513a71599c3fd113614344c163b8da33e4066451`
+- sha256: `a4fc08a9501bf876f59d54a62a6b788b30c6e58a87656cd9016303db9380d30d`
