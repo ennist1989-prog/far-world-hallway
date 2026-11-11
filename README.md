@@ -1,4 +1,4 @@
-# Far World — Hallway Pilot (v4.5)
+# Far World — Hallway Pilot (v4.6)
 
 A self-contained playable 3D hallway slice for Far World. Open the site in a desktop browser and click to start.
 
@@ -23,6 +23,6 @@ Full source, license, and file credits are in [TEXTURES.md](TEXTURES.md). Source
 
 ## Build
 
-The site serves a single self-contained `index.html` (hallway v4.5).
+The site serves a single self-contained `index.html` (hallway v4.6).
 
-- sha256: `9768686d2614bd19ec6344db694ec17cba769e0358524cedbfb41bd664a93095`
+- sha256: `54fb87fc233ea2a4da8bd6f984b2a0938cafcabd7fec3126053b4f039e667e29`
