@@ -1,4 +1,4 @@
-# Far World — Hallway Pilot (v4.6)
+# Far World — Hallway Pilot (v4.7)
 
 A self-contained playable 3D hallway slice for Far World. Open the site in a desktop browser and click to start.
 
@@ -13,7 +13,8 @@ This is a public research pilot, not the full game. It is a separate project fro
 - Look with the mouse, or drag if pointer lock is unavailable
 - Arrow keys turn in place
 - Press `E`, Enter, or click to pick up
-- Press `O` to toggle screen effects
+- Press `V` (or the Visual effects button) to choose Off / Low / Medium / Full; the choice is saved
+- Press `O` to switch effects off and back on (crossfaded)
 
 ## Credits
 
@@ -21,8 +22,12 @@ Textures and paintings are real photo scans or public-domain art reproductions (
 
 Full source, license, and file credits are in [TEXTURES.md](TEXTURES.md). Sources include Poly Haven (CC0), ambientCG (CC0), Cooper Hewitt / Wikimedia Commons (CC0 / public domain), and public-domain paintings from Wikimedia Commons.
 
+## Photosensitivity
+
+v4.7 is an epilepsy-safety update. A first-launch prompt sets visual effects intensity (default Low). Every preset stays inside the Far World house limits: no more than 2 flashes per second, fixture brightness 0.88–1.00 with eased dips at 1 Hz or slower, static low-contrast scanlines, a VCR colon that changes at most once per second, and eased full-screen fades of at least 400 ms (including the ending and the effects toggle). This does not make the pilot safe for everyone.
+
 ## Build
 
-The site serves a single self-contained `index.html` (hallway v4.6).
+The site serves a single self-contained `index.html` (hallway v4.7).
 
-- sha256: `54fb87fc233ea2a4da8bd6f984b2a0938cafcabd7fec3126053b4f039e667e29`
+- sha256: `41fe5344dbcd17cf3244380729438629a0f3097abcad7fb2e594d5a0fe1f89f6`
