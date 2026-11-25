@@ -89,3 +89,13 @@ The horror folder currently lives in `ennist1989-prog/far-world-hallway` on `mai
 - **Owner:** Scribe
 - **Size:** S
 - **Brief:** A short boundaries note: what can be learned from each reference, what should not be copied (Angel iconography, "Don't blink" wording, 173's specific sculpture, Fazbear branding). This is a taste/legal-caution memo for the team, not a formal legal opinion.
+
+## Open items — mannequin video clip
+
+- **Why:** `mannequin-video.md` in this folder records a Drive link, not a review. The clip is described as the first video snippet of a live recording, a close-up of mannequin horror gameplay, and nothing in it has been timed or checked.
+- **Owner:** whoever watches the clip (Hex, unless Thomas reassigns it)
+- **Size:** S
+- **Brief:** When the clip is opened, answer these two against the protocol in `timed-look-away-reference-sheet.md` and write the answers into the sheet's row for the clip, then close this item.
+  1. **The gap.** Between the last frame the figure is fully seen and the first frame it is seen again, how long is that gap — counted in frames and in seconds, at the clip's native frame rate?
+  2. **What the gap shows.** Is any of the movement on screen during that gap, or is the figure simply in a new pose when it comes back into view? If movement is visible, how many frames of it?
+- **Also note:** the audio cue during the gap, if there is one, alongside the two answers. Do not guess either answer from a description of the clip; both need the footage.
