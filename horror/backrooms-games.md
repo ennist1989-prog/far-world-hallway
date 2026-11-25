@@ -8,3 +8,13 @@ Both games work because the Backrooms are architecture without purpose — yello
 1. **Escape the Backrooms (2022–2025)** — The encyclopaedic version, treating the lore as a museum of liminal levels and using co-op scale (four players, proximity chat, entities that hear you) to make each room a group problem.
 2. **Inside the Backrooms (2022)** — The tighter, puzzle-first take, where randomized solutions and cramped spaces make communication the difference between a clean run and a panic.
 3. **The Backrooms (Found Footage) (2022–)** — Kane Parsons' short films established the visual grammar these games borrow, proving that a camcorder, a hum and an endless yellow corridor are enough on their own.
+
+## Sources
+
+- [GameSpot review of Escape the Backrooms](https://www.gamespot.com/reviews/escape-the-backrooms-review/1900-6418431/) — the level-as-museum structure, the flashlight-and-almond-water loop and the draining sanity meter.
+- [Escape the Backrooms on Steam](https://store.steampowered.com/app/1943950/Escape_the_Backrooms) — four-player co-op, proximity voice chat, entities that hear you, and "no wanderer left behind" exit rules.
+- [Escape the Backrooms](https://en.wikipedia.org/wiki/Escape_the_Backrooms), Wikipedia — 30+ levels, sanity hallucinations below 15%, and the Kane Parsons and Poolrooms influences.
+- [Inside the Backrooms comparison](https://escapethebackrooms.org/backrooms-games/inside-the-backrooms) — the puzzle-room versus route-based distinction and how each shapes co-op communication.
+- [The Guardian: why games are obsessed with the Backrooms](https://www.theguardian.com/games/2026/jul/27/video-games-obsessed-backrooms) — the Backrooms aesthetic as wallpaper over a multiplayer survival-horror blueprint.
+- [GameSpot: best Backrooms games](https://www.gamespot.com/articles/best-backrooms-games) — co-op appeal and the uneven enemy AI and mechanics.
+- [Loot Level Chill review](https://lootlevelchill.com/reviews/escape-the-backrooms-review) — level variety, shared puzzle progress and why first runs with others are the strongest.
