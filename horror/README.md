@@ -13,6 +13,7 @@ Each note opens with a three-sentence summary, then lists the top three games or
 - [Dark Souls: Statues, Mannequins and Environmental Storytelling](dark-souls-statues-and-storytelling.md) — Masked Manikins, Belfry Gargoyles, Royal Knight statues, item-text and level-design narrative.
 - [Occult and Folk-Horror Visual Language](occult-folk-horror-visual-language.md) — candles, apotropaic sigils, veils, handmade wrongness, liminal domestic spaces.
 - [Mannequin Horror](mannequin-horror.md) — why the uncanny human shape works, and the look-doubt-move beat that sells it.
+- [Mannequin Video](mannequin-video.md) — drive clip: first snippet of a live recording, a close-up of mannequin horror gameplay; link recorded, not yet reviewed.
 - [Moves When Unseen](moves-when-unseen.md) — Hex addendum: SCP-173, the Weeping Angels, FNAF, Silent Hill mannequins, and how "it only moves when you look away" should work in a dark house.
 - [Timed Look-Away Reference Sheet](timed-look-away-reference-sheet.md) — Hex brief 3: the four look-away sequences with sourced structure and audio cues, and every timing that still needs measuring.
 
