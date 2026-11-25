@@ -2,7 +2,7 @@
 
 Ready-to-assign briefs. These are follow-ups, not ground-up surveys: Freebuff's seven topic notes plus Hex's review and the moves-when-unseen addendum are the baseline. Do not rebuild those files. Do not start game code or prototypes.
 
-The horror folder currently lives in `ennist1989-prog/far-world-hallway` on `main`, not in private `far-world`. Briefs below assume that stays true until Thomas says otherwise.
+The horror folder lives in both `ennist1989-prog/far-world-hallway` and the private `ennist1989-prog/far-world`, mirrored byte for byte at `horror/` in each. Write to both, or to one and mirror it at once; do not let the two copies diverge.
 
 ## P0 — unblocks the rest
 
