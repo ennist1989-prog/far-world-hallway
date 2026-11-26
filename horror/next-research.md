@@ -31,6 +31,7 @@ The horror folder lives in both `ennist1989-prog/far-world-hallway` and the priv
 - **Owner:** Freebuff
 - **Size:** M
 - **Brief:** Watch or play the Bart's Department Store section of *Condemned: Criminal Origins* (2005) and write a short behaviour sheet: which figures actually relocate, whether relocation is gated on the camera, how enemies mix into the displays, and what the follow/multiply beat does. Flag anything that is a scripted set piece versus a systemic rule. Add the sheet as a new subsection or a small companion file; leave `mannequin-horror.md` intact.
+- **Status (26 Nov 2026): partly done.** The sheet exists — `horror/condemned-barts-behaviour-sheet.md`, built from the GameFAQs guides, Rely on Horror and Uppercut, with the scripted-versus-systemic split called out. Nothing in it came from playing the chapter, so the four checks at the end of the sheet are still outstanding: whether a mannequin will move while fully in frame, whether the reorder tableau is deterministic across reloads, how many living figures stand in each room, and what the walk speed actually measures. Close this brief once those four are answered and the sheet's verdicts are corrected against them.
 
 ### 5. Phone footage review (blocked)
 - **Why:** Thomas already assigned Hex to review the reference video for atmosphere and timing once it is in the repo.
