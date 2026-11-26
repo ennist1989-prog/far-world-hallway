@@ -91,6 +91,52 @@ The horror folder lives in both `ennist1989-prog/far-world-hallway` and the priv
 - **Size:** S
 - **Brief:** A short boundaries note: what can be learned from each reference, what should not be copied (Angel iconography, "Don't blink" wording, 173's specific sculpture, Fazbear branding). This is a taste/legal-caution memo for the team, not a formal legal opinion.
 
+## Added 26 November 2026 — follow-ups to the lock spec
+
+These came out of writing `horror/lock-spec.md`. Briefs 14–20 are ordered by what unblocks what: 14 is a decision, 15–18 each remove a different unknown, 19–20 are small and can run in parallel.
+
+### 14. Adopt the lock spec
+- **Why:** `lock-spec.md` states the rule, but six decisions in its §10 are Thomas's. Until they are answered, every other note keeps assuming a slightly different rule, which is how "camera-gated" ended up meaning two things across three files.
+- **Owner:** Thomas (Freebuff records)
+- **Size:** S
+- **Brief:** Read `horror/lock-spec.md` §10 (D1–D6) and answer each accept/change. Freebuff then appends a "Decisions" section to the spec with the answers and the date, removes the PROPOSED status line, and mirrors the file. Nothing else in the folder changes until then; treat every rule in the spec as provisional.
+
+### 15. Stare-stall and deadlock rules
+- **Why:** If the player can hold a figure in view indefinitely, it can never reach them, and the mechanic becomes a staring contest with a corridor. This is the single design decision that determines whether looking is a tactic or a shield, and no note addresses it.
+- **Owner:** Freebuff (options), Thomas (choice)
+- **Size:** M
+- **Brief:** One page of three or four anti-deadlock designs: (a) architecture forces look-aways — doors, corners, stairwells, darkness between lamps; (b) watching costs something — lamp drain, rising sound, a second figure moving in the blind spot; (c) watched figures still close slowly, so staring delays rather than shields; (d) some rooms simply cannot be cleared by staring. For each: what the player feels, how it interacts with `lock-spec.md` §8, and what it breaks. Recommend one. No code.
+
+### 16. Blind-spot grammar — what the camera and beam actually cover
+- **Why:** At a first-person field of view, "looking away" is mostly a side effect of turning a corner. How often the mechanic can fire at all depends on FOV, beam width and turn rate, and none of those numbers is written down anywhere in the packet.
+- **Owner:** Cine (with Freebuff)
+- **Size:** M
+- **Brief:** For a plausible first-person setup, compute or measure: how much of a room leaves the frame per degree of turn at 2 m, 4 m and 6 m; the beam cone width at 1 m, 3 m and 5 m; how long a 90° and a 180° turn takes at walking pace; and the staging moments where a player genuinely loses a figure (doorway, threshold, corner, stair landing). Deliver a small table plus four to six staging rules, and cross-reference the angle notes in `hex-review.md`.
+
+### 17. Human look-away field measurement
+- **Why:** The timing budget is still unmeasured, and it can be measured without building anything. Every later tuning decision inherits whatever this produces.
+- **Owner:** Thomas (with Hex)
+- **Size:** M
+- **Brief:** Put six to ten people through the house walk with figures staged, filmed on a phone. Log per person: mean look-away duration, how quickly they re-check, how often they turn fully around, how long before they notice a figure has changed, and what they say at the moment they notice. Same six-item protocol as `timed-look-away-reference-sheet.md`. Deliver a data table and three conclusions for timer values. No game build, no code.
+
+### 18. Sightlines and floor-plan note
+- **Why:** For a single-house game the pacing is set more by the floor plan than by the AI. After the lock spec, this is the highest-leverage document in the folder.
+- **Owner:** Ember (with Cine)
+- **Size:** M
+- **Brief:** Room by room: how many sightlines the player holds at the doorway, where a figure can stand within 2 m and still be unseen, threshold and door-swing placement, mirror and glass positions, ceiling height and furniture that blocks. Produce a table of coverage per room, name three or four rooms that should carry the mechanic and one or two that should never, and tie each to the staging rules from brief 16. No build.
+
+### 19. Teaching the rule without a HUD
+- **Why:** The packet says nothing about onboarding, and the mechanic fails if the player reads the movement as random. A rule the player cannot learn is a bug they will report.
+- **Owner:** Scribe (with Mira)
+- **Size:** S–M
+- **Brief:** A short onboarding design: the first figure should be caught almost mid-move; how long the doubt beat can hold; how many repetitions and rooms before it reads as a rule; what the player is told, if anything (nothing, a phone note, a mirror, repetition alone); and what to do when someone looked away honestly and the figure still moved, if that ever happens. Include a 60-second paper script of the first encounter.
+
+### 20. Glossary and rule card
+- **Why:** Terms drift between files — this week alone the folder header was stale and "camera-gated" meant two different things. A shared vocabulary is cheap and stops the next round of drift.
+- **Owner:** Freebuff
+- **Size:** S
+- **Brief:** One file, `horror/glossary.md`: about fifteen terms — seen, held, released, lock, gap, doubt beat, displacement, touch, coverage, blind spot, authored beat, systemic beat, verification state, false positive, stage rule — each with a one-line definition and the file that owns it, plus a half-page rule card for artists and level designers. Definitions must match `lock-spec.md` once brief 14 is answered. Index it in the README and mirror it.
+
 ## Open items — mannequin video clip
 
 - **Why:** `mannequin-video.md` in this folder records a Drive link, not a review. The clip is described as the first video snippet of a live recording, a close-up of mannequin horror gameplay, and nothing in it has been timed or checked.
