@@ -1,0 +1,22 @@
+# Blob SHAs for every mirrored file in horror/.
+# Regenerate with: ./horror/mirror-check.sh --write
+# Verify with:     ./horror/mirror-check.sh
+#                  ./horror/mirror-check.sh <a-checkout> <b-checkout>
+# This file cannot list its own hash, so only the two-checkout form catches
+# drift in the manifest itself.
+
+horror/README.md  88971e1ba65e2e037675b4d2a379b13dbd02a640
+horror/amnesia-the-dark-descent.md  8fc12856aa2ff9d02d2c44f802bdc2f8338bd99d
+horror/backrooms-games.md  98af64073ab0efa42d7678c8b703441baf881b45
+horror/condemned-barts-behaviour-sheet.md  8889e69bf5a2d4e8fa01a62e6c88771d81918a4e
+horror/dark-souls-statues-and-storytelling.md  65682f5cf6080f1dcf5bad3b6e3e42e61dbb70f3
+horror/hex-review.md  478ff96bafb393158dd36a6369d763335dbaa3f9
+horror/mannequin-horror.md  a589396a5ff46092c6dce60d4d28239470da1ae3
+horror/mannequin-video.md  60ada17cd452d65b5ca6c88d8c71c55614fe8a94
+horror/mirror-check.sh  ad2d91d1f098c59eea152903bab460a4adb0968b
+horror/moves-when-unseen.md  25d8fea1d934d5295172a3c8e6e980150d350f0c
+horror/next-research.md  f9e2268e4dfef3e7f8bc45ee2da012e3f6b9d6ea
+horror/occult-folk-horror-visual-language.md  cbb92610ea9f1ebfae5068edaa196d41a3a03faa
+horror/outlast.md  b33477363aa5170ba0fee7befd575dd2435123a3
+horror/resident-evil-7.md  b5ad64cc744336a9fe040e26c0ef06217d4d59d1
+horror/timed-look-away-reference-sheet.md  3e3e155ef59378118cf87c9bafd1f5ca579cb416

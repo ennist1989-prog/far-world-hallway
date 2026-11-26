@@ -27,6 +27,17 @@ Each note opens with a three-sentence summary, then lists the top three games or
 
 Summaries are kept to three sentences so they stay comparable across topics. Sources are listed at the end of each note and cover the specific claims made there; where a claim comes from a wiki entry rather than a design essay, that is noted.
 
+## Mirror check
+
+`horror/` exists in both `ennist1989-prog/far-world-hallway` and the private `ennist1989-prog/far-world` and has to stay byte-identical in both. `mirror-check.sh` verifies that, and `mirror-manifest.txt` holds the expected blob SHA for every file:
+
+```sh
+./horror/mirror-check.sh                                     # this checkout against the manifest
+./horror/mirror-check.sh ../far-world ../far-world-hallway    # the two checkouts against each other
+```
+
+Both forms exit 0 when they agree and 1 when they do not, printing the differing files. After changing anything in `horror/`, run `./horror/mirror-check.sh --write` in the checkout you trust, copy the changed file and the manifest to the other repo, then run the two-checkout form. The manifest cannot list its own hash, so that second form is the only one that catches drift in the manifest itself.
+
 ## Source link check
 
 All 52 source links were fetched on 25 November 2026 and resolve to live pages. No dead links and no paywalled sources: the Journal of Design History article is open access under CC BY, and a repository PDF is linked alongside it.
