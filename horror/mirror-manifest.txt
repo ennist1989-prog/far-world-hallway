@@ -5,7 +5,8 @@
 # This file cannot list its own hash, so only the two-checkout form catches
 # drift in the manifest itself.
 
-horror/README.md  2372c2825d666b6a3cc97531a8876b43749d28fd
+horror/README.md  53481cceb9ad9b71bec52b38e6dd5cfcd339bc8a
+horror/aesthetic-direction.md  9784f0351c02ab4ae023e054ac7739edcc8cb13b
 horror/amnesia-the-dark-descent.md  8fc12856aa2ff9d02d2c44f802bdc2f8338bd99d
 horror/backrooms-games.md  98af64073ab0efa42d7678c8b703441baf881b45
 horror/condemned-barts-behaviour-sheet.md  8889e69bf5a2d4e8fa01a62e6c88771d81918a4e
@@ -20,5 +21,7 @@ horror/moves-when-unseen.md  25d8fea1d934d5295172a3c8e6e980150d350f0c
 horror/next-research.md  811da927f4c0b4a1d40a84de40051d22b28b7ffd
 horror/occult-folk-horror-visual-language.md  cbb92610ea9f1ebfae5068edaa196d41a3a03faa
 horror/outlast.md  b33477363aa5170ba0fee7befd575dd2435123a3
+horror/reference-collection.md  426d6101f4c667738e2de10a41b21861fa604b12
 horror/resident-evil-7.md  b5ad64cc744336a9fe040e26c0ef06217d4d59d1
+horror/technical-feasibility.md  e70ade4a31665279d348d7a6754f76d8c9917140
 horror/timed-look-away-reference-sheet.md  3e3e155ef59378118cf87c9bafd1f5ca579cb416

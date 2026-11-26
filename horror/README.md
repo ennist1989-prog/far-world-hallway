@@ -19,6 +19,12 @@ Each note opens with a three-sentence summary, then lists the top three games or
 - [Timed Look-Away Reference Sheet](timed-look-away-reference-sheet.md) — Hex brief 3: the four look-away sequences with sourced structure and audio cues, and every timing that still needs measuring.
 - [Lock Spec](lock-spec.md) — what counts as "seen": the head anchor, beam versus silhouette, edge of frame, reflections, glass and partial occlusion, per-figure versus global, fourteen worked cases, and the six decisions still open.
 
+## Concept documents
+
+- [Aesthetic direction](aesthetic-direction.md) — the recommended look and feel: one attention rule expressed as two symptoms, palette, light, sound, how far to push the distortion, and the open questions.
+- [Reference collection](reference-collection.md) — the annotated moodboard organised by concept: Beksiński, Bacon, Giger, the Silent Hill Otherworld, *Annihilation*, *Jacob's Ladder* and *Layers of Fear* for the walls; mannequin film, game and photography for the figures; and where to look in each.
+- [Technical feasibility](technical-feasibility.md) — how the two effects are built at a high level (shader displacement, visibility detection, pooled actors) and the readability and performance risks.
+
 ## Hex review and next work
 
 - [Hex review](hex-review.md) — verification flags, gap-fill on flashlight-only dread and scare pacing, and a checklist for the phone footage when it lands.
@@ -42,7 +48,7 @@ Both forms exit 0 when they agree and 1 when they do not, printing the differing
 
 ## Source link check
 
-All 52 source links were fetched on 25 November 2026 and resolve to live pages. No dead links and no paywalled sources: the Journal of Design History article is open access under CC BY, and a repository PDF is linked alongside it.
+All 52 source links in the original notes were fetched on 25 November 2026 and resolve to live pages. The links added on 26 November 2026 with the reference collection and technical note were fetched that day; all resolved, except the Giger Museum page, which returns 403 to scripted requests while loading in a browser — the same pattern as the publishers listed below. No dead links and no paywalled sources: the Journal of Design History article is open access under CC BY, and a repository PDF is linked alongside it.
 
 Some publishers return HTTP 403 to automated requests while loading normally in a browser — GameSpot, The Guardian, Bloody Disgusting, Destructoid, TechRaptor, NightTide, Oxford Academic, wiki.gg, New Game+, Lokey Lore and The View from the Junkyard were all in this group. A scripted check will flag those without the citation being broken, so re-check them in a browser before treating a 403 as a dead link.
 
