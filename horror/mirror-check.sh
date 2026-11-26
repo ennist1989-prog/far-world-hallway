@@ -69,6 +69,14 @@ fi
 [ $# -eq 0 ] || { echo "usage: mirror-check.sh [--write | <checkout-a> <checkout-b>]" >&2; exit 2; }
 
 [ -f "$manifest" ] || { echo "mirror-check: $manifest_rel is missing; run --write" >&2; exit 2; }
+
+# A manifest that matches the working tree but not HEAD is still drift: the next
+# clone of this repo will disagree with the copy that has it committed.
+if git -C "$root" rev-parse --git-dir >/dev/null 2>&1 &&
+   ! git -C "$root" diff --quiet HEAD -- "$manifest_rel" 2>/dev/null; then
+  echo "mirror-check: $manifest_rel differs from HEAD; commit it with the change it records" >&2
+  exit 1
+fi
 expected=$(grep -v '^#' "$manifest" | sed '/^[[:space:]]*$/d')
 actual=$(hash_tree "$root" | grep -v "^$manifest_rel  ")
 diffout=$(diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual"))
