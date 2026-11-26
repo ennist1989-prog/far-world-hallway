@@ -13,7 +13,7 @@ This is the packet's moodboard in text: an annotated index of the visual referen
 
 ### A1. Zdzisław Beksiński — the fantastic period (1970s)
 
-**Look at:** the museum collection at Sanok, and works such as *AC75* (1975): a dark sky, tall flat rock stumps, a small fire burning on each. The period is landscapes and figural compositions that abandon the avant-garde for a personal, solitary imagery ([Muzeum Sanok](https://muzeum.sanok.pl/en/zbiory/zdzislaw-beksinski)).
+**Look at:** the Sanok collection, especially *AC75* (1975), which an exhibition listing describes as a dark sky over several tall flat rock stumps, with a small fire glowing on each ([Berlin.de](https://www.berlin.de/en/tickets/exhibitions/hr-giger-beksiski-ruppert-lynch-in-the-shadow-of-surrealism-37b78f12-b3ed-4257-8f26-a808039ed4b5)). The period as a whole is landscapes and figural compositions that abandon the avant-garde for a personal, solitary imagery ([Muzeum Sanok](https://muzeum.sanok.pl/en/zbiory/zdzislaw-beksinski)).
 
 **Why it matters:** Beksiński's structures do not read as buildings that melted; they read as geology that was once a body. Scale is doing the work — tiny lights against enormous ruined forms — and the palette is bone, ash, umber and black with one warm point.
 
@@ -158,7 +158,7 @@ No shipped reference does both halves with a single attention rule; that gap is 
 
 ## Sources
 
-- Muzeum Sanok, [Zdzisław Beksiński collection](https://muzeum.sanok.pl/en/zbiory/zdzislaw-beksinski).
+- Muzeum Sanok, [Zdzisław Beksiński collection](https://muzeum.sanok.pl/en/zbiory/zdzislaw-beksinski) — source for the fantastic period; [Berlin.de exhibition listing, *HR Giger, Beksiński, Ruppert, Lynch: In the Shadow of Surrealism*](https://www.berlin.de/en/tickets/exhibitions/hr-giger-beksiski-ruppert-lynch-in-the-shadow-of-surrealism-37b78f12-b3ed-4257-8f26-a808039ed4b5) — source for the *AC75* description (the painting itself is credited to the Historical Museum, Sanok).
 - [Francis Bacon and his invisible rooms](https://pmc.ncbi.nlm.nih.gov/articles/PMC5537596), *Medical Humanities* (PMC).
 - [Necronom IV by H. R. Giger](https://artincontext.org/necronom-iv-by-h-r-giger/), artincontext; [H. R. Giger Museum biography](https://www.hrgigermuseum.com/hr-giger) (403 to scripted requests, loads in a browser); [Airbrush Action, January–February 1987](https://www.littlegiger.com/articles/files/AirbrushAction_01_1987.pdf); [Admind on the *Necronomicon*](https://admindagency.com/hr-giger-necronomicon).
 - [Dread Central on *Silent Hill*'s Otherworld](https://www.dreadcentral.com/editorials/444219/silent-hill-alessas-anguish-made-manifest-nightmares-in-the-fog); Chris Pruett, [The Changing Utility of the Otherworld](https://horror.dreamdawn.com/?p=29211); [*Silent Hill: The Terror Engine*](https://library.oapen.org/bitstream/handle/20.500.12657/24016/1006117.pdf), OAPEN; [IGN's *Silent Hill 3* interview](https://www.ign.com/articles/2002/06/12/silent-hill-3-interview); [Project MUSE chapter on *Silent Hill*](https://muse.jhu.edu/pub/166/oa_monograph/chapter/393873).
