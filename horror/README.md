@@ -21,6 +21,7 @@ Each note opens with a three-sentence summary, then lists the top three games or
 ## Hex review and next work
 
 - [Hex review](hex-review.md) — verification flags, gap-fill on flashlight-only dread and scare pacing, and a checklist for the phone footage when it lands.
+- [Impact frame, footage pacing, and era props](impact-frame-and-pacing.md) — Hex: which of Thomas's GodotShaders samples support the anime hit and rewind teleport, a beat-by-beat timing proposal with a photosensitivity cap, how multi-angle phone footage can be mined for scare spacing, and suggested 90s/2000s prop categories (not an inventory).
 - [Next research](next-research.md) — prioritized, ready-to-assign briefs for Freebuff and the team.
 
 ## Format
