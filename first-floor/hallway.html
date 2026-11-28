@@ -243,7 +243,7 @@ const TEX = {"textures/algae_decal.png":"data:image/png;base64,iVBORw0KGgoAAAANS
   }
 
   const HALL_W = 3.3, HALL_H = 2.58, EYE = 1.62, RADIUS = 0.22;
-  const WALK = 1.4, WALK_FAST = 2.0, TURN = 1.35, STEP = 1 / 30, PITCH_MAX = Math.PI / 3;
+  const WALK = 1.4, WALK_FAST = 2.0, TURN = 1.35, STEP = 1 / 30, PITCH_MAX = 80 * Math.PI / 180; // playtest-fixes: match teddy/purgatory ±80° pitch; yaw already unbounded
   const FOG_COLOR = 0x3a3e34, FOG_DENSITY = 0.045;
   const KEY_LIGHT = 0xe8f0d8, COOL_LIGHT = 0xc8ddd8, DOOR_WARM = 0xffd090;
   const WALL_TILE_W = 0.72;
@@ -2105,7 +2105,8 @@ const TEX = {"textures/algae_decal.png":"data:image/png;base64,iVBORw0KGgoAAAANS
     if (strafe < 0) latch.left = Math.max(0, latch.left - moved);
     if (strafe > 0) latch.right = Math.max(0, latch.right - moved);
     pathDist = pathDistance(player.x, player.z);
-    if (!hideHud) player.y = lookY + Math.sin(performance.now() * 0.009) * ((len || (pointer.down && pointer.locked)) && fxP().bob ? 0.01 * (1 + fxCur.unr) : 0);
+    // playtest-fixes (t490u): no head-bob while looking (pointer locked) or walking — stable camera height
+    if (!hideHud) player.y = lookY;
     setLook();
 
     const moving = Math.hypot(player.x - prevX, player.z - prevZ) > 0.0005;
