@@ -6,6 +6,7 @@ A public research pilot, not the full game. It is a separate project from [Lante
 
 The start page links the rooms in play order. Open a room in Chrome or Firefox and click to start.
 
+- [Loading Screen Purgatory](https://ennist1989-prog.github.io/far-world-hallway/purgatory/) (sha256 `7ed90afc86ee6c56587946ea1da36aa0667b4dfcbf4af113811c15b4fe6c5806`)
 1. [Hallway](https://ennist1989-prog.github.io/far-world-hallway/first-floor/hallway.html) (v4.12, sha256 `a15c37c9a4d4ffac28ce5030f2180c5d99f6f3ccc55309a00408f39c96197495`)
 2. [Teddy’s room](https://ennist1989-prog.github.io/far-world-hallway/first-floor/teddy-room.html) (sha256 `9f9e4cb7c5b00273e55a1cba7f2e3eabd1900389794235ebb02bcf3384c53c95`)
 

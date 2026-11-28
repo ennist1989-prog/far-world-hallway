@@ -1,0 +1,1872 @@
+<!DOCTYPE html>
+<!--
+  Loading Screen Purgatory — Far World playable slice (in and back out).
+  Resumed from /workspace/far-world-slice/index.html (7b6ff94f).
+
+  One corridor. Walk in, one smuggling choice (the photograph), walk back out.
+  Corruption is the cost of carrying the memory, and it shows in the hall on the return.
+  Procedural art only. No AI textures, no reference photos, no combat.
+
+  Photosensitivity (HOUSE + WCAG):
+  - no tube-light flicker, no 24 Hz shade noise, no 20 Hz transition tears
+  - fades through dark are two 800 ms legs plus a 2-frame opaque hold at the bottom
+    (each leg 10–90% well over 400 ms)
+  - inspect opens and closes the same way (corridor ↔ dark ↔ inspect)
+  - on take/leave, the turn fade starts from the inspect view itself:
+    inspect, then dark, turn only at the bottom, then up into the corridor
+  - reframe (turn to walk back) only at the bottom of a fade
+  - no scripted camera motion inside a fade leg (§9.19)
+  - player yaw and pitch pans gate HOUSE H1 / §9.20 (ge3 ≤ 20% of a 10° window)
+  - corruption is a slow shear, tint, and stepped smear — not a strobe
+  - VHS overlay is static scanlines + slow grain; no red/cyan flash bars
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Loading Screen Purgatory — Far World slice</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #070708;
+    color: #d8d0c4;
+    font-family: Georgia, "Times New Roman", serif;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #070708;
+  }
+  canvas {
+    display: block;
+    image-rendering: auto;
+    background: #000;
+    box-shadow: 0 0 80px rgba(0,0,0,0.8);
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="1280" height="720" aria-label="Loading Screen Purgatory"></canvas></div>
+<script>
+(() => {
+  "use strict";
+
+  const W = 1280, H = 720;
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+  const params = new URLSearchParams(location.search);
+  const AUDIO_OFF = params.get("audio") === "0";
+
+  const ENTRY_Z = 8;
+  const TABLE_Z = 248;
+  const EXIT_LIMIT = TABLE_Z + 4;
+  const VCR_Z = 118;
+  const WALK_SPEED = 16;
+  const STEP_DIST = 6;
+  const LINGER_GRACE = 0.6;
+  const LINGER_EXTRA = 0.006;
+  const FADE_LEG = 0.80;
+  const FADE_HOLD = 2 / 60; // two opaque black frames at the bottom of every fade
+  const FADE_OPAQUE = 0.995; // snap the overlay to solid so a 0.999 alpha cannot leak
+  const TITLE_LOCK_MS = 800;
+  const END_LOCK_MS = 1500;
+  const INPUT_COOLDOWN_MS = 400;
+  const CHOICE_LOCK_MS = 500;
+
+  const ITEM = {
+    id: "photo",
+    name: "the photograph",
+    title: "A photograph of Jules",
+    body: "The last night on the porch. The smile is easy. The light is warm.",
+    risk: "If you carry this out, the corridor takes a cut. The face may not come back the same.",
+    take: "You slip the photograph inside your coat. The paper is already warmer than the hall.",
+    leave: "You leave the photograph on the table. Your hands stay empty.",
+  };
+
+  const state = {
+    scene: "title",
+    selected: 0,
+    carried: null,
+    decided: false,
+    inspect: null,
+    corruption: 0,
+    lingerExtra: 0,
+    outStartZ: TABLE_Z,
+    camZ: ENTRY_Z,
+    camX: 0,
+    yaw: 0,
+    pitch: 0,
+    facing: 1,
+    leg: "in",
+    vel: 0,
+    time: 0,
+    dt: 0,
+    nearVcr: false,
+    atTable: false,
+    atEntry: false,
+    caption: "",
+    captionT: 0,
+    audioOn: false,
+    ready: false,
+    freeze: false,
+    driven: false,
+    stepLeft: 0,
+    stillT: 0,
+    lingering: false,
+    holdT: 0,
+    fade: null,
+    inputLockUntil: 0,
+    needKeyRelease: false,
+    endLockUntil: 0,
+    titleLockUntil: 0,
+    choiceLockUntil: 0,
+  };
+
+  const keys = Object.create(null);
+  const pointer = { down: false, x: 0, y: 0 };
+  const uiHits = [];
+  let lastTs = 0;
+  let noise, grain, photoBase;
+  let audio = null;
+  let rafId = 0;
+  let lookBlur = null;
+  let lastYawForBlur = 0, lastPitchForBlur = 0;
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeInOut(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+  function hash(n) {
+    const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  }
+
+  const PITCH_MAX = 80 * Math.PI / 180;
+  const YAW_MAX = 80 * Math.PI / 180;
+  const MOUSE_SENS = 0.0022;
+  const STRAFE_LIMIT = 22;
+
+  function resetLook() {
+    state.yaw = 0;
+    state.pitch = 0;
+    state.camX = 0;
+  }
+
+  function applyLook(dyaw, dpitch) {
+    if (state.fade || state.scene !== "corridor") return;
+    state.yaw = clamp(state.yaw + dyaw, -YAW_MAX, YAW_MAX);
+    state.pitch = clamp(state.pitch + dpitch, -PITCH_MAX, PITCH_MAX);
+  }
+
+  function pointerLocked() {
+    return document.pointerLockElement === canvas;
+  }
+
+  function makeCanvas(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    return c;
+  }
+
+  function buildTextures() {
+    noise = makeCanvas(256, 256);
+    const nx = noise.getContext("2d");
+    const nid = nx.createImageData(256, 256);
+    for (let i = 0; i < nid.data.length; i += 4) {
+      const v = (hash(i * 0.017) * 255) | 0;
+      nid.data[i] = nid.data[i + 1] = nid.data[i + 2] = v;
+      nid.data[i + 3] = 255;
+    }
+    nx.putImageData(nid, 0, 0);
+
+    grain = makeCanvas(128, 128);
+    const gx = grain.getContext("2d");
+    const gid = gx.createImageData(128, 128);
+    for (let i = 0; i < gid.data.length; i += 4) {
+      const v = (hash(i * 0.031 + 9.2) * 255) | 0;
+      gid.data[i] = gid.data[i + 1] = gid.data[i + 2] = v;
+      gid.data[i + 3] = 255;
+    }
+    gx.putImageData(gid, 0, 0);
+
+    photoBase = makeCanvas(280, 340);
+    drawPortrait(photoBase.getContext("2d"), 0, true);
+  }
+
+  function corrStep(corr) {
+    return Math.floor(clamp(corr, 0, 1) * 8) / 8;
+  }
+
+  function drawPortrait(p, corr, baseOnly) {
+    const w = 280, h = 340;
+    const sky = p.createLinearGradient(0, 0, 0, h * 0.55);
+    sky.addColorStop(0, "#c47a4a");
+    sky.addColorStop(0.45, "#e8a060");
+    sky.addColorStop(1, "#6a3a38");
+    p.fillStyle = sky;
+    p.fillRect(0, 0, w, h);
+    p.fillStyle = "#2a2420";
+    p.fillRect(0, h * 0.62, w, h * 0.38);
+    p.strokeStyle = "#3a3228";
+    p.lineWidth = 4;
+    p.beginPath();
+    p.moveTo(0, h * 0.62);
+    p.lineTo(w, h * 0.62);
+    p.moveTo(28, h * 0.62);
+    p.lineTo(28, h);
+    p.moveTo(w - 36, h * 0.62);
+    p.lineTo(w - 36, h);
+    p.stroke();
+    p.fillStyle = "rgba(20,12,8,0.35)";
+    p.fillRect(0, h * 0.48, w, 18);
+
+    p.fillStyle = "#3a2a28";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.86, 78, 46, 0, 0, Math.PI * 2);
+    p.fill();
+    p.fillStyle = "#c9a088";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.58, 28, 34, 0, 0, Math.PI * 2);
+    p.fill();
+    p.fillStyle = "#b89078";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.72, 22, 16, 0, 0, Math.PI * 2);
+    p.fill();
+    p.fillStyle = "#d4b09a";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.46, 44, 54, 0, 0, Math.PI * 2);
+    p.fill();
+    p.fillStyle = "#2a1a14";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.40, 50, 48, 0, Math.PI, Math.PI * 2);
+    p.fill();
+    p.fillRect(w * 0.5 - 52, h * 0.38, 20, 70);
+    p.fillRect(w * 0.5 + 28, h * 0.40, 24, 50);
+    p.fillStyle = "#1a100c";
+    p.beginPath();
+    p.ellipse(w * 0.5 - 16, h * 0.45, 7, 5, 0, 0, Math.PI * 2);
+    p.ellipse(w * 0.5 + 16, h * 0.45, 7, 5, 0, 0, Math.PI * 2);
+    p.fill();
+    p.fillStyle = "#5a3028";
+    p.beginPath();
+    p.ellipse(w * 0.5, h * 0.54, 10, 6, 0, 0, Math.PI * 2);
+    p.fill();
+    p.strokeStyle = "#8a4a40";
+    p.lineWidth = 2;
+    p.beginPath();
+    p.arc(w * 0.5, h * 0.58, 16, 0.2, Math.PI - 0.2);
+    p.stroke();
+
+    if (baseOnly) return;
+
+    const cq = corrStep(corr);
+    if (cq > 0.05) {
+      const slices = 6 + (cq * 16) | 0;
+      for (let i = 0; i < slices; i++) {
+        const y = 40 + hash(i + cq * 10) * (h - 80);
+        const hh = 2 + hash(i + 4) * (6 + cq * 16);
+        const dx = (hash(i + 9) - 0.5) * cq * 44;
+        try { p.drawImage(p.canvas, 0, y, w, hh, dx, y + (hash(i + 2) - 0.5) * cq * 6, w, hh); } catch (err) {}
+      }
+      p.save();
+      p.globalCompositeOperation = "screen";
+      p.fillStyle = `rgba(180,40,50,${0.05 * cq})`;
+      p.fillRect(0, 0, w, h);
+      p.restore();
+      if (cq > 0.45) {
+        p.fillStyle = `rgba(0,0,0,${(cq - 0.45) * 0.45})`;
+        const fy = h * 0.40, fh = 50;
+        for (let y = fy; y < fy + fh; y += 2) {
+          const dx = (hash(y + cq * 5) - 0.5) * cq * 36;
+          p.fillRect(w * 0.5 - 40 + dx, y, 80, 1);
+        }
+      }
+    }
+  }
+
+  function glitchText(s, amount) {
+    const cq = corrStep(amount);
+    if (cq <= 0.02) return s;
+    const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01#/\\|·";
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === " ") { out += " "; continue; }
+      const r = hash(i * 19.7 + cq * 24);
+      if (r < cq * 0.42) out += glyphs[Math.floor(hash(i * 7.3 + cq) * glyphs.length)];
+      else out += ch;
+    }
+    return out;
+  }
+
+  function roundRect(p, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    p.beginPath();
+    p.moveTo(x + rr, y);
+    p.arcTo(x + w, y, x + w, y + h, rr);
+    p.arcTo(x + w, y + h, x, y + h, rr);
+    p.arcTo(x, y + h, x, y, rr);
+    p.arcTo(x, y, x + w, y, rr);
+    p.closePath();
+  }
+
+  function fitCanvas() {
+    const wrap = document.getElementById("wrap");
+    const r = wrap.getBoundingClientRect();
+    const scale = Math.min(r.width / W, r.height / H);
+    canvas.style.width = Math.floor(W * scale) + "px";
+    canvas.style.height = Math.floor(H * scale) + "px";
+  }
+
+  function canvasPos(ev) {
+    const r = canvas.getBoundingClientRect();
+    const src = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
+    return {
+      x: (src.clientX - r.left) * (W / r.width),
+      y: (src.clientY - r.top) * (H / r.height),
+    };
+  }
+
+  function hit(id, x, y, w, h) {
+    uiHits.push({ id, x, y, w, h });
+  }
+  function hitAt(x, y) {
+    for (let i = uiHits.length - 1; i >= 0; i--) {
+      const h = uiHits[i];
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h.id;
+    }
+    return null;
+  }
+
+  function startAudio() {
+    if (AUDIO_OFF || state.audioOn) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ac = new AC();
+      const master = ac.createGain();
+      master.gain.value = 0.14;
+      master.connect(ac.destination);
+
+      function noiseBuf() {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        return buf;
+      }
+      const nsrc = ac.createBufferSource();
+      nsrc.buffer = noiseBuf();
+      nsrc.loop = true;
+      const nfilter = ac.createBiquadFilter();
+      nfilter.type = "bandpass";
+      nfilter.frequency.value = 700;
+      nfilter.Q.value = 0.5;
+      const ng = ac.createGain();
+      ng.gain.value = 0.03;
+      nsrc.connect(nfilter);
+      nfilter.connect(ng);
+      ng.connect(master);
+      nsrc.start();
+
+      const osc = ac.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 58;
+      const og = ac.createGain();
+      og.gain.value = 0.04;
+      osc.connect(og);
+      og.connect(master);
+      osc.start();
+
+      audio = { ac, master, ng, og };
+      state.audioOn = true;
+      if (ac.state === "suspended") ac.resume().catch(() => {});
+    } catch (e) {
+      state.audioOn = false;
+    }
+  }
+
+  function tuneAudio() {
+    if (!audio) return;
+    try {
+      const c = state.corruption;
+      const s = state.scene;
+      let hum = 0.03, hiss = 0.03;
+      if (s === "title" || s === "end") { hum = 0.018; hiss = 0.015; }
+      if (s === "corridor" || s === "inspect") { hum = 0.05 + c * 0.04; hiss = 0.03 + c * 0.05; }
+      if (state.fade) { hum = 0.04; hiss = 0.05; }
+      audio.og.gain.value = hum;
+      audio.ng.gain.value = hiss;
+    } catch (e) {}
+  }
+
+  function nowMs() { return state.driven ? state.time * 1000 : performance.now(); }
+
+  function armInput(ms) {
+    const now = nowMs();
+    state.needKeyRelease = !!(keys.Enter || keys[" "] || keys.Spacebar);
+    state.inputLockUntil = now + (ms != null ? ms : INPUT_COOLDOWN_MS);
+  }
+
+  function confirmAllowed() {
+    const now = nowMs();
+    if (state.needKeyRelease) return false;
+    if (state.fade) return false;
+    if (state.scene === "end" && now < state.endLockUntil) return false;
+    if (state.scene === "title" && now < state.titleLockUntil) return false;
+    if (state.scene === "inspect" && now < state.choiceLockUntil) return false;
+    if (now < state.inputLockUntil) return false;
+    return true;
+  }
+
+  function resetGame() {
+    state.scene = "title";
+    state.selected = 0;
+    state.carried = null;
+    state.decided = false;
+    state.inspect = null;
+    state.corruption = 0;
+    state.lingerExtra = 0;
+    state.outStartZ = TABLE_Z;
+    state.camZ = ENTRY_Z;
+    resetLook();
+    state.facing = 1;
+    state.leg = "in";
+    state.vel = 0;
+    state.nearVcr = false;
+    state.atTable = false;
+    state.atEntry = false;
+    state.caption = "";
+    state.captionT = 0;
+    state.fade = null;
+    state.stepLeft = 0;
+    state.stillT = 0;
+    state.lingering = false;
+    state.holdT = 0;
+    pointer.down = false;
+    for (const k of Object.keys(keys)) keys[k] = false;
+    const cold = true;
+    if (cold) {
+      state.inputLockUntil = 0;
+      state.endLockUntil = 0;
+      state.titleLockUntil = 0;
+      state.choiceLockUntil = 0;
+      state.needKeyRelease = !!(keys.Enter || keys[" "] || keys.Spacebar);
+    }
+  }
+
+  function startFade(onBottom, after) {
+    state.fade = { phase: "down", t: 0, dur: FADE_LEG, hold: FADE_HOLD, onBottom, after, doneBottom: false };
+  }
+
+  function beginFromTitle() {
+    startAudio();
+    const now = nowMs();
+    state.titleLockUntil = now + TITLE_LOCK_MS;
+    startFade(() => {
+      enterCorridor();
+    }, null);
+  }
+
+  function enterCorridor() {
+    state.scene = "corridor";
+    state.camZ = ENTRY_Z;
+    resetLook();
+    state.facing = 1;
+    state.leg = "in";
+    state.vel = 0;
+    state.corruption = 0;
+    state.lingerExtra = 0;
+    state.stepLeft = 0;
+    state.stillT = 0;
+    state.lingering = false;
+    state.holdT = 0;
+    state.decided = false;
+    state.carried = null;
+    state.inspect = null;
+    pointer.down = false;
+    for (const k of Object.keys(keys)) keys[k] = false;
+    armInput(INPUT_COOLDOWN_MS);
+  }
+
+  function openChoice() {
+    if (state.decided || state.fade || state.scene === "inspect") return;
+    startFade(() => {
+      state.scene = "inspect";
+      state.inspect = "photo";
+      state.selected = 0;
+      pointer.down = false;
+      for (const k of Object.keys(keys)) keys[k] = false;
+      state.stepLeft = 0;
+      state.holdT = 0;
+      state.vel = 0;
+    }, () => {
+      state.choiceLockUntil = nowMs() + CHOICE_LOCK_MS;
+      state.needKeyRelease = !!(keys.Enter || keys[" "] || keys.Spacebar);
+      armInput(0);
+    });
+  }
+
+  function resolveChoice(take) {
+    if (state.decided || state.fade) return;
+    state.decided = true;
+    state.carried = take ? "photo" : null;
+    state.caption = take ? ITEM.take : ITEM.leave;
+    state.captionT = 4.0;
+    // Stay on inspect. Fade down from the inspect view, turn only at the
+    // bottom (fully dark), then fade up into the turned corridor. The
+    // corridor never pops in bright, and there is no scripted camera
+    // motion inside a fade leg (§9.19).
+    startFade(() => {
+      state.inspect = null;
+      state.scene = "corridor";
+      state.facing = -1;
+      state.leg = "out";
+      state.outStartZ = Math.min(state.camZ, TABLE_Z - 4);
+      state.camZ = state.outStartZ;
+      resetLook();
+      state.vel = 0;
+      state.stepLeft = 0;
+      state.holdT = 0;
+      if (take) state.corruption = 0.12;
+    }, () => armInput(INPUT_COOLDOWN_MS));
+  }
+
+  function leaveCorridor() {
+    if (state.leg !== "out" || state.fade) return;
+    startFade(() => {
+      state.scene = "end";
+      const now = nowMs();
+      state.endLockUntil = now + END_LOCK_MS;
+      state.selected = 0;
+    }, () => armInput(200));
+  }
+
+  function menuIds() {
+    if (state.fade) return [];
+    if (state.scene === "title") return ["begin"];
+    if (state.scene === "inspect") return ["take", "leave"];
+    if (state.scene === "end") return ["restart"];
+    if (state.scene === "corridor" && state.leg === "in" && state.atTable && !state.decided) return ["look"];
+    if (state.scene === "corridor" && state.leg === "out" && state.atEntry) return ["exit"];
+    return [];
+  }
+
+  function activate(id) {
+    startAudio();
+    if (id === "begin") beginFromTitle();
+    else if (id === "look") openChoice();
+    else if (id === "take") resolveChoice(true);
+    else if (id === "leave") resolveChoice(false);
+    else if (id === "exit") leaveCorridor();
+    else if (id === "restart") {
+      resetGame();
+      state.titleLockUntil = nowMs() + TITLE_LOCK_MS;
+      armInput(TITLE_LOCK_MS);
+    }
+  }
+
+  function onKey(e, down) {
+    const name = e.key;
+    const k = name.length === 1 ? name.toLowerCase() : name;
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Spacebar"].includes(name)) e.preventDefault();
+    if (down) keys[k] = keys[name] = true;
+    else {
+      keys[k] = keys[name] = false;
+      if (name === "Enter" || name === " " || name === "Spacebar") state.needKeyRelease = false;
+      return;
+    }
+    const isConfirm = name === "Enter" || name === " " || name === "Spacebar";
+    if (state.scene === "corridor" && !state.fade && !isConfirm && state.scene !== "inspect") {
+      if (name === "ArrowUp" || k === "w") state.stepLeft += STEP_DIST;
+      if (name === "ArrowDown" || k === "s") state.stepLeft -= STEP_DIST;
+    }
+    const ids = menuIds();
+    if (ids.length) {
+      if (name === "ArrowRight" || name === "ArrowDown" || k === "d" || k === "s") {
+        state.selected = (state.selected + 1) % ids.length;
+      }
+      if (name === "ArrowLeft" || name === "ArrowUp" || k === "a" || k === "w") {
+        state.selected = (state.selected + ids.length - 1) % ids.length;
+      }
+      if (isConfirm) {
+        const id = ids[clamp(state.selected, 0, ids.length - 1)];
+        if (!confirmAllowed()) return;
+        activate(id);
+      }
+    } else if (isConfirm && state.scene === "corridor" && state.leg === "in" && state.atTable && !state.decided) {
+      if (confirmAllowed()) activate("look");
+    } else if (isConfirm && state.scene === "corridor" && state.leg === "out" && state.atEntry) {
+      if (confirmAllowed()) activate("exit");
+    }
+  }
+
+  window.addEventListener("keydown", (e) => onKey(e, true));
+  window.addEventListener("keyup", (e) => onKey(e, false));
+
+  function pointerDown(ev) {
+    ev.preventDefault();
+    const p = canvasPos(ev);
+    pointer.x = p.x;
+    pointer.y = p.y;
+    let id = hitAt(p.x, p.y);
+    if (!id && state.scene === "title") id = "begin";
+    if (id) {
+      if (!confirmAllowed() && id !== "begin") {
+        if (!(state.scene === "title" && confirmAllowed())) return;
+      }
+      if (id === "begin" || confirmAllowed() || (state.scene === "title")) {
+        if (state.scene === "title" && nowMs() < state.titleLockUntil && id === "begin") {
+          /* first load titleLock is 0 */
+        }
+        if (confirmAllowed() || (state.scene === "title" && nowMs() >= state.titleLockUntil)) {
+          activate(id);
+          pointer.down = false;
+        }
+      }
+      return;
+    }
+    const isTouch = ev.type === "touchstart" || ev.pointerType === "touch";
+    if (state.scene === "corridor" && !state.fade && !isTouch && !pointerLocked()) {
+      if (canvas.requestPointerLock) canvas.requestPointerLock();
+      pointer.down = false;
+      return;
+    }
+    pointer.down = true;
+  }
+
+  function pointerMove(ev) {
+    if (pointerLocked()) {
+      applyLook(ev.movementX * MOUSE_SENS, -ev.movementY * MOUSE_SENS);
+      return;
+    }
+    if (!pointer.down) return;
+    const p = canvasPos(ev);
+    pointer.x = p.x;
+    pointer.y = p.y;
+  }
+  function pointerUp(ev) {
+    ev.preventDefault();
+    pointer.down = false;
+  }
+  canvas.addEventListener("mousedown", pointerDown);
+  window.addEventListener("mousemove", pointerMove);
+  window.addEventListener("mouseup", pointerUp);
+  canvas.addEventListener("touchstart", pointerDown, { passive: false });
+  window.addEventListener("touchmove", pointerMove, { passive: false });
+  window.addEventListener("touchend", pointerUp, { passive: false });
+  document.addEventListener("pointerlockchange", () => {
+    if (!pointerLocked()) pointer.down = false;
+  });
+  window.addEventListener("resize", fitCanvas);
+  window.addEventListener("blur", () => {
+    pointer.down = false;
+    for (const k of Object.keys(keys)) keys[k] = false;
+    state.holdT = 0;
+    if (pointerLocked() && document.exitPointerLock) document.exitPointerLock();
+  });
+
+  function updateFade(dt) {
+    const f = state.fade;
+    if (!f) return;
+    f.t += dt;
+    if (f.phase === "down" && f.t >= f.dur) {
+      if (!f.doneBottom) {
+        f.doneBottom = true;
+        if (f.onBottom) f.onBottom();
+      }
+      f.phase = "hold";
+      f.t = 0;
+    } else if (f.phase === "hold" && f.t >= (f.hold || FADE_HOLD)) {
+      f.phase = "up";
+      f.t = 0;
+    } else if (f.phase === "up" && f.t >= f.dur) {
+      const after = f.after;
+      state.fade = null;
+      if (after) after();
+    }
+  }
+
+  function fadeAlpha() {
+    const f = state.fade;
+    if (!f) return 0;
+    if (f.phase === "hold") return 1;
+    const u = easeInOut(clamp(f.t / f.dur, 0, 1));
+    return f.phase === "down" ? u : 1 - u;
+  }
+
+  function updateCorruption() {
+    if (state.leg !== "out" || !state.carried) {
+      if (!state.carried) state.corruption = 0;
+      return;
+    }
+    const span = Math.max(20, state.outStartZ - ENTRY_Z);
+    const traveled = clamp((state.outStartZ - state.camZ) / span, 0, 1);
+    if (state.lingering) state.lingerExtra = clamp(state.lingerExtra + LINGER_EXTRA * state.dt, 0, 0.2);
+    state.corruption = clamp(0.12 + 0.78 * easeInOut(traveled) + state.lingerExtra, 0, 1);
+  }
+
+  function updateCorridor(dt) {
+    if (state.fade || state.scene === "inspect") {
+      state.vel = 0;
+      return;
+    }
+    let wish = 0;
+    if (keys.ArrowUp || keys.w || keys.W) wish += 1;
+    if (keys.ArrowDown || keys.s || keys.S) wish -= 1;
+    if (!pointerLocked() && pointer.down && !hitAt(pointer.x, pointer.y)) wish += 1;
+    wish = wish > 1 ? 1 : wish < -1 ? -1 : wish;
+    if (wish !== 0) state.holdT += dt;
+    else state.holdT = 0;
+    let move = 0;
+    if (wish !== 0 && state.holdT >= 0.12) {
+      move = wish * WALK_SPEED * dt;
+      state.stepLeft = 0;
+    } else if (state.stepLeft !== 0) {
+      const sgn = Math.sign(state.stepLeft);
+      const amt = Math.min(Math.abs(state.stepLeft), WALK_SPEED * 1.35 * dt);
+      move = sgn * amt;
+      state.stepLeft -= sgn * amt;
+      if (Math.abs(state.stepLeft) < 0.01) state.stepLeft = 0;
+    }
+    const before = state.camZ;
+    const beforeX = state.camX;
+    state.camZ = clamp(state.camZ + move * state.facing, 18, EXIT_LIMIT);
+    if (!menuIds().length) {
+      let sidestep = 0;
+      if (keys.a || keys.A) sidestep -= 1;
+      if (keys.d || keys.D) sidestep += 1;
+      if (sidestep) state.camX = clamp(state.camX + sidestep * WALK_SPEED * 0.7 * dt, -STRAFE_LIMIT, STRAFE_LIMIT);
+    }
+    const moved = Math.abs(state.camZ - before) > 1e-6 || Math.abs(state.camX - beforeX) > 1e-6;
+    state.vel = dt > 0 ? (state.camZ - before) / dt : 0;
+    if (moved) state.stillT = 0; else state.stillT += dt;
+    state.lingering = state.stillT >= LINGER_GRACE;
+    state.nearVcr = Math.abs(state.camZ - VCR_Z) < 28;
+    state.atTable = state.leg === "in" && !state.decided && state.camZ >= TABLE_Z - 16;
+    state.atEntry = state.leg === "out" && state.camZ <= ENTRY_Z + 22;
+    updateCorruption();
+  }
+
+  function update(dt) {
+    if (!state.freeze) state.time += dt;
+    state.dt = dt;
+    if (state.captionT > 0) state.captionT -= dt;
+    if (state.fade) updateFade(dt);
+    if (state.scene === "corridor") updateCorridor(dt);
+    if (state.scene === "inspect") updateCorruption();
+    tuneAudio();
+  }
+
+  function project(x, y, z) {
+    const depth = (z - state.camZ) * state.facing;
+    const wx = x * state.facing - state.camX;
+    const yaw = state.yaw || 0;
+    const pitch = state.pitch || 0;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const x1 = wx * cy - depth * sy;
+    const z1 = wx * sy + depth * cy;
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    // y is down-positive; pitch > 0 looks up (horizon moves down). No roll.
+    const y2 = y * cp + z1 * sp;
+    const z2 = z1 * cp - y * sp;
+    const f = 520;
+    const d = Math.max(6, z2);
+    return { x: W * 0.5 + (x1 * f) / d, y: H * 0.46 + (y2 * f) / d, s: f / d, z: z2 };
+  }
+
+  function shade(hex, m) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = ((n >> 16) & 255) * m;
+    const g = ((n >> 8) & 255) * m;
+    const b = (n & 255) * m;
+    return `rgb(${r|0},${g|0},${b|0})`;
+  }
+
+  function quad(g, a, b, c, d) {
+    g.beginPath();
+    g.moveTo(a.x, a.y);
+    g.lineTo(b.x, b.y);
+    g.lineTo(c.x, c.y);
+    g.lineTo(d.x, d.y);
+    g.closePath();
+    g.fill();
+  }
+
+  function drawCorridor() {
+    const g = ctx;
+    g.fillStyle = "#10100e";
+    g.fillRect(0, 0, W, H);
+
+    const cq = state.carried ? state.corruption : 0;
+    const warp = cq * 0.12;
+    const breath = 0.94 + 0.06 * Math.sin(state.time * (Math.PI * 2 / 4.5));
+    const tint = cq;
+    const segs = 28;
+    for (let i = segs; i >= 0; i--) {
+      const z0 = state.facing > 0
+        ? state.camZ + 8 + i * 18
+        : state.camZ - 8 - i * 18;
+      const z1 = state.facing > 0 ? z0 + 18 : z0 - 18;
+      const midZ = (z0 + z1) / 2;
+      const depth = (midZ - state.camZ) * state.facing;
+      if (depth < 4 || depth > 340) continue;
+      const shear = Math.sin(midZ * 0.02 + state.time * 0.22) * warp * 16;
+      const left = -86 + shear;
+      const right = 86 + shear * 0.4;
+      const top = -62;
+      const bot = 58;
+      const a = project(left, top, z0);
+      const b = project(right, top, z0);
+      const c = project(right, top, z1);
+      const d = project(left, top, z1);
+      const e = project(left, bot, z0);
+      const fpt = project(right, bot, z0);
+      const gp = project(right, bot, z1);
+      const hp = project(left, bot, z1);
+      if (a.z < 4 && b.z < 4) continue;
+
+      const fog = clamp(depth / 280, 0, 1);
+      const mul = (1 - fog * 0.62) * breath;
+      const wallA = shade(tint > 0.2 ? "#5a5848" : "#6e664e", mul * (0.92 - tint * 0.18));
+      const wallB = shade(tint > 0.2 ? "#524e40" : "#625a44", mul * (0.90 - tint * 0.16));
+      const ceilC = shade("#3c3c38", (1 - fog * 0.7) * (0.95 + breath * 0.05));
+      const floorC = shade(tint > 0.25 ? "#2a261c" : "#2c261c", (1 - fog * 0.7) * breath);
+
+      g.fillStyle = ceilC;
+      quad(g, a, b, c, d);
+      g.fillStyle = floorC;
+      quad(g, e, fpt, gp, hp);
+      g.fillStyle = wallA;
+      quad(g, a, d, hp, e);
+      g.fillStyle = wallB;
+      quad(g, b, fpt, gp, c);
+
+      if (i % 2 === 0) {
+        g.strokeStyle = `rgba(0,0,0,${0.18 + fog * 0.25})`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(e.x, e.y);
+        g.lineTo(fpt.x, fpt.y);
+        g.stroke();
+      }
+
+      if (i % 5 === 0) {
+        const tube0 = project(-22, -61, midZ);
+        const tube1 = project(22, -61, midZ);
+        const tube2 = project(22, -57, midZ);
+        const tube3 = project(-22, -57, midZ);
+        // Softer, less hot fixtures so pitch/yaw pans stay inside HOUSE H1.
+        // Lit read is kept (still clearly a fixture) but peak contrast against the
+        // ceiling is lowered so a 10° window does not see ≥3 reversals/s.
+        const lit = (0.38 + 0.10 * breath) * (1 - fog) * (1 - tint * 0.25);
+        g.fillStyle = `rgba(210,205,180,${lit})`;
+        quad(g, tube0, tube1, tube2, tube3);
+        const l0 = project(0, -58, midZ);
+        if (l0.z > 8) {
+          const rad = Math.max(30, 140 * (l0.s * 0.08));
+          const lg = g.createRadialGradient(l0.x, l0.y, 2, l0.x, l0.y, rad);
+          lg.addColorStop(0, `rgba(220,214,180,${0.10 * breath * (1 - fog) * (1 - tint * 0.3)})`);
+          lg.addColorStop(1, "rgba(0,0,0,0)");
+          g.fillStyle = lg;
+          g.beginPath();
+          g.arc(l0.x, l0.y, rad, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+    }
+
+    drawCorridorDoors();
+    drawVcrProp();
+    drawTableAndPhoto();
+    drawEndDoors();
+
+    if (cq > 0.05) {
+      g.fillStyle = `rgba(40,48,36,${0.10 * cq})`;
+      g.fillRect(0, 0, W, H);
+    }
+
+    const vg = g.createLinearGradient(0, 0, 0, H);
+    vg.addColorStop(0, "rgba(0,0,0,0.40)");
+    vg.addColorStop(0.2, "rgba(0,0,0,0)");
+    vg.addColorStop(0.8, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.45)");
+    g.fillStyle = vg;
+    g.fillRect(0, 0, W, H);
+
+    // Look-speed blur (HOUSE §9.20): smear only the world while yaw/pitch is moving,
+    // so fixture edges do not invert a 10° window three times a second.
+    if (!lookBlur) lookBlur = makeCanvas(W, H);
+    if (lookBlur.width !== W || lookBlur.height !== H) { lookBlur.width = W; lookBlur.height = H; }
+    const dLook = Math.hypot(state.yaw - lastYawForBlur, state.pitch - lastPitchForBlur);
+    const lookRate = dLook / Math.max(state.dt || 1 / 60, 1 / 120);
+    if (lookRate > 0.6 && !state.fade) {
+      const a = clamp((lookRate - 0.6) / 3.0, 0, 0.55);
+      g.globalAlpha = a;
+      g.drawImage(lookBlur, 0, 0);
+      g.globalAlpha = 1;
+    }
+    lookBlur.getContext("2d").drawImage(canvas, 0, 0);
+    lastYawForBlur = state.yaw;
+    lastPitchForBlur = state.pitch;
+  }
+
+  const DOORS = [
+    { z: 46, side: -1, h: 1.0, num: "101" },
+    { z: 82, side: 1, h: 0.82, num: "103" },
+    { z: 114, side: -1, h: 1.15, num: "102" },
+    { z: 148, side: 1, h: 1.0, num: "10" },
+    { z: 186, side: -1, h: 0.9, num: "1111" },
+    { z: 214, side: 1, h: 1.25, num: "110" },
+  ];
+
+  function drawCorridorDoors() {
+    const g = ctx;
+    const cq = state.carried ? state.corruption : 0;
+    for (const door of DOORS) {
+      const z = door.z;
+      const depth = (z - state.camZ) * state.facing;
+      if (depth < 8 || depth > 260) continue;
+      const x = door.side * 86;
+      const top = 20 - 70 * door.h;
+      const bot = 58;
+      const inset = door.side * 4;
+      const p1 = project(x, top, z - 6);
+      const p2 = project(x + inset, top, z + 6);
+      const p3 = project(x + inset, bot, z + 6);
+      const p4 = project(x, bot, z - 6);
+      if (p1.z < 4) continue;
+      const fog = clamp(depth / 280, 0, 1);
+      g.fillStyle = shade("#1a1814", 1 - fog * 0.75);
+      quad(g, p1, p2, p3, p4);
+      g.strokeStyle = `rgba(40,36,28,${0.7 - fog * 0.5})`;
+      g.lineWidth = Math.max(1, 2 * p1.s * 0.04);
+      g.stroke();
+      const np = project(x + door.side * 2, top + 16, z);
+      g.fillStyle = `rgba(180,170,130,${0.55 * (1 - fog)})`;
+      g.font = `${Math.max(8, 16 * np.s * 0.05)}px Courier New, monospace`;
+      g.textAlign = "center";
+      const label = cq > 0.3 ? glitchText(door.num, cq) : door.num;
+      g.fillText(label, np.x, np.y);
+    }
+  }
+
+  // Cable-through-the-carpet clue (Thomas / Pixel Sage, 22 Nov 2026):
+  // thick coax+power bundle, taped down a cart leg, one slack loop, taut into a rough hole.
+  const HOLE_X = 2;
+  const HOLE_Z = VCR_Z - 6;
+  const HOLE_R = 12; // ~15–20 cm; scaled so the hole is ≥3 px at 720p from the entrance approach
+
+  function drawCableHole() {
+    const z = HOLE_Z;
+    const depth = (z - state.camZ) * state.facing;
+    if (depth < 8 || depth > 280) return;
+    const g = ctx;
+    const fog = clamp(depth / 280, 0, 1);
+    const floorY = 58;
+    const c = project(HOLE_X, floorY, z);
+    if (c.z < 8) return;
+    const rx = Math.max(5, HOLE_R * c.s * 0.16);
+    const ry = Math.max(3, rx * 0.45);
+    function edge(i, n, lo, hi, ph) {
+      const a = (i / n) * Math.PI * 2;
+      const wobble = 0.5 + 0.28 * Math.sin(a * 3 + ph) + 0.16 * Math.sin(a * 7 + ph * 1.4) + 0.10 * Math.sin(a * 13 + ph * 2);
+      const r = lo + (hi - lo) * wobble;
+      return [c.x + Math.cos(a) * rx * r, c.y + Math.sin(a) * ry * r, a];
+    }
+    // dark irregular well — no cream ring / grommet
+    g.fillStyle = shade("#07080a", 1 - fog * 0.3);
+    g.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      const e = edge(i, 24, 0.86, 1.08, 0.4);
+      if (i === 0) g.moveTo(e[0], e[1]); else g.lineTo(e[0], e[1]);
+    }
+    g.closePath();
+    g.fill();
+    g.fillStyle = shade("#050506", 1 - fog * 0.2);
+    g.beginPath();
+    g.ellipse(c.x + rx * 0.06, c.y + ry * 0.08, rx * 0.52, ry * 0.44, 0, 0, Math.PI * 2);
+    g.fill();
+    // frayed tufts ~+8 L* over carpet (#2c261c → ~#453c2e)
+    g.lineCap = "round";
+    g.strokeStyle = `rgba(69,60,46,${0.92 * (1 - fog)})`;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + 0.11 * Math.sin(i * 2.3);
+      const wobble = 0.96 + 0.16 * Math.sin(i * 1.7);
+      const x0 = c.x + Math.cos(a) * rx * wobble;
+      const y0 = c.y + Math.sin(a) * ry * wobble;
+      const len = (0.20 + (i % 3) * 0.10) * rx;
+      g.lineWidth = Math.max(1, c.s * (0.016 + (i % 4) * 0.006));
+      g.beginPath();
+      g.moveTo(x0, y0);
+      const a2 = a + ((i % 3) - 1) * 0.18;
+      g.lineTo(x0 + Math.cos(a2) * len, y0 + Math.sin(a2) * len * 0.7 - ry * 0.08);
+      g.stroke();
+    }
+    g.strokeStyle = `rgba(26,22,16,${0.75 * (1 - fog)})`;
+    g.lineWidth = Math.max(1, c.s * 0.014);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.4;
+      const x0 = c.x + Math.cos(a) * rx * 0.92;
+      const y0 = c.y + Math.sin(a) * ry * 0.92;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.lineTo(c.x + Math.cos(a) * rx * 0.45, c.y + Math.sin(a) * ry * 0.45);
+      g.stroke();
+    }
+  }
+
+  function strokeBundle(g, pts, fog) {
+    if (pts.length < 2) return;
+    const mid = pts[(pts.length / 2) | 0];
+    const width = Math.max(9, mid.s * 0.44);
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.strokeStyle = `rgba(28,31,34,${0.97 * (1 - fog)})`;
+    g.lineWidth = width;
+    g.stroke();
+    // faint specular line along the top of the bundle
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y - width * 0.22);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y - width * 0.22);
+    g.strokeStyle = `rgba(42,46,50,${0.40 * (1 - fog)})`;
+    g.lineWidth = Math.max(1, width * 0.16);
+    g.stroke();
+  }
+
+  function drawVcrProp() {
+    const z = VCR_Z;
+    const depth = (z - state.camZ) * state.facing;
+    drawCableHole();
+    if (depth < 10 || depth > 260) return;
+    const g = ctx;
+    const fog = clamp(depth / 280, 0, 1);
+    const L = -52, R = -14;
+    const z0 = z - 10, z1 = z + 10;
+    const shelf = 18, floorY = 58, top = 2;
+    function q(hex, a, b, c, d) {
+      g.fillStyle = shade(hex, 1 - fog * 0.7);
+      quad(g, a, b, c, d);
+    }
+    q("#2a2a2c", project(L, shelf, z0), project(R, shelf, z0), project(R, floorY, z0), project(L, floorY, z0));
+    q("#3a3a40", project(L, shelf, z0), project(R, shelf, z0), project(R, shelf, z1), project(L, shelf, z1));
+    q("#2e2e32", project(R, shelf, z0), project(R, shelf, z1), project(R, floorY, z1), project(R, floorY, z0));
+    q("#141418", project(L + 2, top, z0 + 2), project(R - 2, top, z0 + 2), project(R - 2, shelf, z0 + 2), project(L + 2, shelf, z0 + 2));
+    q("#1c1c22", project(L + 2, top, z0 + 2), project(R - 2, top, z0 + 2), project(R - 2, top, z1 - 2), project(L + 2, top, z1 - 2));
+    q("#050506", project(L + 6, 6, z0 + 1.5), project(-36, 6, z0 + 1.5), project(-36, 14, z0 + 1.5), project(L + 6, 14, z0 + 1.5));
+    q("#050506", project(-32, 6, z0 + 1.5), project(R - 6, 6, z0 + 1.5), project(R - 6, 14, z0 + 1.5), project(-32, 14, z0 + 1.5));
+    const r1 = project(L + 14, 10, z0 + 1.2);
+    const r2 = project(R - 14, 10, z0 + 1.2);
+    g.strokeStyle = `rgba(120,120,110,${0.45 * (1 - fog)})`;
+    g.lineWidth = Math.max(1, r1.s * 0.03);
+    g.beginPath(); g.arc(r1.x, r1.y, Math.max(3, r1.s * 0.12), 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(r2.x, r2.y, Math.max(3, r2.s * 0.12), 0, Math.PI * 2); g.stroke();
+    const clk = project(-22, 4.2, z0 + 1);
+    if (clk.z > 8 && clk.x > 0 && clk.x < W) {
+      g.fillStyle = `rgba(160,50,50,${0.55 * (1 - fog)})`;
+      g.font = `${Math.max(9, Math.min(22, 13 * clk.s * 0.05))}px Courier New, monospace`;
+      g.textAlign = "center";
+      g.fillText("12:00", clk.x, clk.y);
+    }
+    const mid = project((L + R) / 2, top, z);
+    if (mid.z > 8) {
+      const rg = g.createRadialGradient(mid.x, mid.y, 4, mid.x, mid.y, 90 * (mid.s * 0.04));
+      rg.addColorStop(0, `rgba(220,200,140,${0.16 * (1 - fog)})`);
+      rg.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = rg;
+      g.fillRect(mid.x - 80, mid.y - 80, 160, 160);
+    }
+    // near structural leg plus the rear taped leg (cable leaves the back of the deck)
+    const nearX = R - 2, nearZ = z0 + 2;
+    const legX = R - 2, legZ = z1 - 2;
+    q("#9aa0a4", project(nearX - 1.2, shelf, nearZ), project(nearX + 1.2, shelf, nearZ), project(nearX + 1.2, floorY, nearZ), project(nearX - 1.2, floorY, nearZ));
+    q("#9aa0a4", project(legX - 1.2, shelf, legZ), project(legX + 1.2, shelf, legZ), project(legX + 1.2, floorY, legZ), project(legX - 1.2, floorY, legZ));
+    // two grey tape strips on the rear cart leg
+    function tapeStrip(y0, y1) {
+      const t0 = project(legX - 2.6, y0, legZ);
+      const t1 = project(legX + 2.6, y0, legZ);
+      const t2 = project(legX + 2.6, y1, legZ);
+      const t3 = project(legX - 2.6, y1, legZ);
+      g.fillStyle = shade("#6a6e72", 1 - fog * 0.7);
+      quad(g, t0, t1, t2, t3);
+    }
+    tapeStrip(38, 41.5);
+    tapeStrip(44, 47.5);
+    // bundle: back of the deck, down the rear taped leg, one slack loop, taut into the hole
+    const cablePts = [
+      project(-48, 6, z1),
+      project(-30, 16, z1 - 2),
+      project(legX, 28, legZ),
+      project(legX, 46, legZ),
+      project(legX + 4, 56.5, legZ - 4),
+      project(legX + 10, 54.2, (legZ + HOLE_Z) * 0.5),
+      project(-18, 57, HOLE_Z + 6),
+      project(HOLE_X, 57.6, HOLE_Z + 1.2)
+    ].filter(p => p.z > 6);
+    strokeBundle(g, cablePts, fog);
+  }
+
+  function drawTableAndPhoto() {
+    const z = TABLE_Z;
+    const depth = (z - state.camZ) * state.facing;
+    if (depth < 8 || depth > 280) return;
+    const g = ctx;
+    const fog = clamp(depth / 280, 0, 1);
+    const L = -16, R = 16;
+    const z0 = z - 8, z1 = z + 8;
+    const top = 22, floorY = 58, photoY = 8;
+    function q(hex, a, b, c, d) {
+      g.fillStyle = shade(hex, 1 - fog * 0.7);
+      quad(g, a, b, c, d);
+    }
+    q("#3a2a1c", project(L, top, z0), project(R, top, z0), project(R, top, z1), project(L, top, z1));
+    q("#2a1c14", project(L, top, z0), project(R, top, z0), project(R, floorY, z0), project(L, floorY, z0));
+    q("#241812", project(R, top, z0), project(R, top, z1), project(R, floorY, z1), project(R, floorY, z0));
+    const showPhoto = !(state.carried === "photo");
+    if (showPhoto) {
+      const a = project(-8, photoY, z - 1);
+      const b = project(8, photoY, z - 1);
+      const c = project(8, top - 1, z - 1);
+      const d = project(-8, top - 1, z - 1);
+      if (a.z > 6) {
+        try {
+          const tmp = makeCanvas(280, 340);
+          tmp.getContext("2d").drawImage(photoBase, 0, 0);
+          g.save();
+          g.beginPath();
+          g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath();
+          g.clip();
+          const ww = Math.abs(b.x - a.x), hh = Math.abs(c.y - a.y);
+          g.drawImage(tmp, Math.min(a.x, b.x), Math.min(a.y, c.y), Math.max(8, ww), Math.max(8, hh));
+          g.restore();
+          g.strokeStyle = `rgba(200,180,120,${0.5 * (1 - fog)})`;
+          g.lineWidth = Math.max(1, a.s * 0.03);
+          g.beginPath();
+          g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath();
+          g.stroke();
+        } catch (err) {}
+      }
+    }
+  }
+
+  function drawEndDoors() {
+    const g = ctx;
+    function doorAt(z, lit) {
+      const depth = (z - state.camZ) * state.facing;
+      if (depth < 8 || depth > 300) return;
+      const p1 = project(-28, -50, z);
+      const p2 = project(28, -50, z);
+      const p3 = project(28, 58, z);
+      const p4 = project(-28, 58, z);
+      const fog = clamp(depth / 280, 0, 1);
+      const glow = 0.32 + 0.08 * Math.sin(state.time * (Math.PI * 2 / 5));
+      g.fillStyle = lit
+        ? `rgba(200,220,210,${(0.30 + glow) * (1 - fog * 0.3)})`
+        : `rgba(30,28,24,${0.85 * (1 - fog * 0.3)})`;
+      quad(g, p1, p2, p3, p4);
+      const i1 = project(-16, -36, z - (z > state.camZ ? 1 : -1));
+      const i2 = project(16, -36, z - (z > state.camZ ? 1 : -1));
+      const i3 = project(16, 40, z - (z > state.camZ ? 1 : -1));
+      const i4 = project(-16, 40, z - (z > state.camZ ? 1 : -1));
+      g.fillStyle = lit ? `rgba(230,240,235,${0.16 * (1 - fog)})` : `rgba(10,10,8,0.5)`;
+      quad(g, i1, i2, i3, i4);
+    }
+    doorAt(0, state.facing < 0);
+    doorAt(TABLE_Z + 10, state.facing > 0);
+  }
+
+  function wrapText(g, text, x, y, maxW, lh) {
+    const words = text.split(" ");
+    let line = "";
+    let yy = y;
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (g.measureText(test).width > maxW) {
+        g.fillText(line, x, yy);
+        line = w;
+        yy += lh;
+      } else line = test;
+    }
+    if (line) g.fillText(line, x, yy);
+  }
+
+  function wrapTextCentered(g, text, cx, y, maxW, lh) {
+    const words = text.split(" ");
+    const lines = [];
+    let line = "";
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (g.measureText(test).width > maxW) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    g.textAlign = "center";
+    lines.forEach((ln, i) => g.fillText(ln, cx, y + i * lh));
+  }
+
+  function drawPulseButton(id, x, y, w, h, label, index) {
+    const ids = menuIds();
+    const sel = ids[state.selected] === id || (ids[index] === id && state.selected === index);
+    const g = ctx;
+    const breathe = sel ? 0.55 + 0.12 * Math.sin(state.time * (Math.PI * 2 / 2.6)) : 0.25;
+    g.fillStyle = sel ? "rgba(80,50,30,0.92)" : "rgba(30,24,20,0.9)";
+    roundRect(g, x, y, w, h, 4);
+    g.fill();
+    g.strokeStyle = sel ? `rgba(230,190,120,${breathe})` : "rgba(160,140,110,0.25)";
+    g.lineWidth = sel ? 2 : 1;
+    g.stroke();
+    g.fillStyle = sel ? "#f0e4c8" : "#c8bca0";
+    g.font = "18px Georgia, serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(label, x + w / 2, y + h / 2 + 1);
+    g.textBaseline = "alphabetic";
+    hit(id, x, y, w, h);
+  }
+
+  function drawTitle() {
+    const g = ctx;
+    g.fillStyle = "#08080a";
+    g.fillRect(0, 0, W, H);
+    g.globalAlpha = 0.18;
+    g.drawImage(noise, 0, 0, W, H);
+    g.globalAlpha = 1;
+    g.fillStyle = "rgba(8,8,10,0.72)";
+    g.fillRect(0, 0, W, H);
+
+    const savedZ = state.camZ, savedF = state.facing, savedY = state.yaw, savedP = state.pitch, savedX = state.camX;
+    state.camZ = 4; state.facing = 1; state.yaw = 0; state.pitch = 0; state.camX = 0;
+    for (let i = 0; i < 12; i++) {
+      const z = 40 + i * 28;
+      const p1 = project(-80, -50, z);
+      const p2 = project(80, -50, z);
+      const p3 = project(80, 50, z);
+      const p4 = project(-80, 50, z);
+      g.strokeStyle = `rgba(180,170,130,${0.05 + i * 0.01})`;
+      g.beginPath();
+      g.moveTo(p1.x, p1.y); g.lineTo(p2.x, p2.y); g.lineTo(p3.x, p3.y); g.lineTo(p4.x, p4.y); g.closePath();
+      g.stroke();
+    }
+    state.camZ = savedZ; state.facing = savedF; state.yaw = savedY; state.pitch = savedP; state.camX = savedX;
+
+    g.fillStyle = "#e8dcc0";
+    g.font = "48px Georgia, serif";
+    g.textAlign = "center";
+    g.fillText("LOADING SCREEN PURGATORY", W / 2, 230);
+    g.fillStyle = "#8a8070";
+    g.font = "18px Georgia, serif";
+    g.fillText("The space between one world and the next.", W / 2, 280);
+    g.fillStyle = "#5a5448";
+    g.font = "14px Courier New, monospace";
+    g.fillText("a Far World vertical slice", W / 2, 318);
+
+    drawPulseButton("begin", W / 2 - 140, 400, 280, 56, "Begin", 0);
+
+    g.fillStyle = "#6a6458";
+    g.font = "15px Georgia, serif";
+    g.fillText("Walk in. One thing you can take, or leave. Walk back out.", W / 2, 520);
+    g.fillStyle = "#4a443c";
+    g.font = "13px Courier New, monospace";
+    g.fillText("Click to look (Esc releases)  ·  W / ↑ walk  ·  S / ↓ back  ·  A / D strafe  ·  Enter or click to choose", W / 2, 620);
+  }
+
+  function drawHeldItem() {
+    if (state.carried !== "photo") return;
+    const g = ctx;
+    const x = 48, y = H - 230;
+    g.fillStyle = "rgba(8,8,8,0.72)";
+    roundRect(g, x, y, 200, 186, 4);
+    g.fill();
+    g.strokeStyle = "rgba(200,180,120,0.25)";
+    g.stroke();
+    g.fillStyle = "#b8aa88";
+    g.font = "12px Courier New, monospace";
+    g.textAlign = "left";
+    g.fillText("CARRYING", x + 14, y + 20);
+    const tmp = makeCanvas(280, 340);
+    const t = tmp.getContext("2d");
+    t.drawImage(photoBase, 0, 0);
+    drawPortrait(t, state.corruption, false);
+    g.drawImage(tmp, x + 30, y + 28, 140, 150);
+  }
+
+  function drawCorruptMeter() {
+    if (state.leg !== "out") return;
+    const g = ctx;
+    const x = 48, y = 68, w = 320, h = 18;
+    g.fillStyle = "rgba(8,8,8,0.65)";
+    g.fillRect(x, y, w, h);
+    const c = state.carried ? state.corruption : 0;
+    const grad = g.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, "#3a5a40");
+    grad.addColorStop(0.55, "#b8a040");
+    grad.addColorStop(1, "#8a4a28");
+    g.fillStyle = grad;
+    g.fillRect(x, y, w * c, h);
+    g.strokeStyle = "rgba(220,200,150,0.35)";
+    g.strokeRect(x, y, w, h);
+    g.fillStyle = "#d0c4a8";
+    g.font = "bold 15px Courier New, monospace";
+    g.textAlign = "left";
+    const label = state.carried ? `CORRUPTION  ${Math.round(c * 100)}%` : "NOTHING CARRIED";
+    g.fillText(label, x, y - 8);
+  }
+
+  function drawCorridorHud() {
+    const g = ctx;
+    if (state.leg === "out") {
+      drawCorruptMeter();
+      drawHeldItem();
+    }
+    g.fillStyle = "rgba(0,0,0,0.7)";
+    g.fillRect(W / 2 - 380, H - 50, 760, 34);
+    g.fillStyle = "#f0e6cc";
+    g.font = "bold 16px Courier New, monospace";
+    g.textAlign = "center";
+    g.fillText(pointerLocked()
+      ? "W / ↑ walk  ·  S / ↓ back  ·  A / D strafe  ·  mouse looks  ·  Esc releases look"
+      : "Click to look (Esc releases)  ·  W / ↑ walk  ·  S / ↓ back  ·  A / D strafe", W / 2, H - 27);
+
+    if (state.captionT > 0 && state.caption) {
+      g.fillStyle = `rgba(8,8,8,${0.55 * clamp(state.captionT, 0, 1)})`;
+      g.fillRect(W / 2 - 420, 96, 840, 40);
+      g.fillStyle = `rgba(230,220,200,${clamp(state.captionT, 0, 1)})`;
+      g.font = "italic 18px Georgia, serif";
+      g.fillText(state.caption, W / 2, 122);
+    } else if (state.nearVcr && !state.atTable && !state.atEntry) {
+      g.fillStyle = "rgba(0,0,0,0.55)";
+      g.fillRect(W / 2 - 300, 86, 600, 46);
+      g.fillStyle = "#d8d0c0";
+      g.font = "16px Georgia, serif";
+      g.fillText("A cable runs from the back of the deck down into the floor.", W / 2, 116);
+    } else if (state.leg === "in" && !state.atTable) {
+      g.fillStyle = "rgba(180,170,150,0.55)";
+      g.font = "15px Georgia, serif";
+      g.textAlign = "center";
+      g.fillText("Walk the corridor. Something is waiting at the far end.", W / 2, 86);
+    } else if (state.leg === "out" && state.carried && !state.atEntry) {
+      g.fillStyle = "rgba(200,180,140,0.7)";
+      g.font = "15px Georgia, serif";
+      g.textAlign = "center";
+      g.fillText("The cost is already in the walls. The face in your coat is changing with the hall.", W / 2, 48);
+    } else if (state.leg === "out" && !state.carried && !state.atEntry) {
+      g.fillStyle = "rgba(180,170,150,0.55)";
+      g.font = "15px Georgia, serif";
+      g.textAlign = "center";
+      g.fillText("You left it. The corridor is as you found it.", W / 2, 86);
+    }
+
+    if (state.scene === "corridor" && state.leg === "in" && state.atTable && !state.decided && !state.fade) {
+      g.fillStyle = "rgba(0,0,0,0.6)";
+      g.fillRect(W / 2 - 300, 150, 600, 96);
+      g.fillStyle = "#e8e0d0";
+      g.font = "16px Georgia, serif";
+      g.textAlign = "center";
+      g.fillText("A photograph lies on a small table. One choice.", W / 2, 184);
+      drawPulseButton("look", W / 2 - 140, 200, 280, 36, "Look closer", 0);
+    }
+    if (state.scene === "corridor" && state.leg === "out" && state.atEntry && !state.fade) {
+      g.fillStyle = "rgba(0,0,0,0.6)";
+      g.fillRect(W / 2 - 300, 150, 600, 96);
+      g.fillStyle = "#e8e0d0";
+      g.font = "16px Georgia, serif";
+      g.textAlign = "center";
+      const line = state.carried
+        ? "The way you came is open. What you carried will come with you."
+        : "The way you came is open. You are leaving empty-handed.";
+      g.fillText(line, W / 2, 184);
+      drawPulseButton("exit", W / 2 - 140, 200, 280, 36, "Step out of the corridor", 0);
+    }
+  }
+
+  function drawInspectOverlay() {
+    drawCorridor();
+    const g = ctx;
+    g.fillStyle = "rgba(6,4,4,0.42)";
+    g.fillRect(0, 0, W, H);
+    const cardW = 720, cardH = 400;
+    const x = (W - cardW) / 2, y = 140;
+    g.fillStyle = "rgba(18,14,12,0.94)";
+    roundRect(g, x, y, cardW, cardH, 6);
+    g.fill();
+    g.strokeStyle = "rgba(200,170,120,0.25)";
+    g.lineWidth = 1;
+    g.stroke();
+
+    try {
+      g.drawImage(photoBase, x + 36, y + 70, 150, 182);
+    } catch (err) {}
+
+    g.fillStyle = "#e8dcc0";
+    g.font = "26px Georgia, serif";
+    g.textAlign = "left";
+    g.fillText(ITEM.title, x + 210, y + 70);
+    g.fillStyle = "#b8aa90";
+    g.font = "18px Georgia, serif";
+    wrapText(g, ITEM.body, x + 210, y + 110, cardW - 260, 28);
+    g.fillStyle = "#d8b070";
+    g.font = "italic 18px Georgia, serif";
+    wrapText(g, ITEM.risk, x + 210, y + 200, cardW - 260, 26);
+
+    drawPulseButton("take", x + 36, y + 310, 300, 52, "Take it with you", 0);
+    drawPulseButton("leave", x + 384, y + 310, 300, 52, "Leave it", 1);
+  }
+
+  function drawEnd() {
+    const g = ctx;
+    g.fillStyle = "#08080a";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = "#e8dcc0";
+    g.font = "36px Georgia, serif";
+    g.textAlign = "center";
+    g.fillText("You walked back out.", W / 2, 160);
+
+    let summary;
+    if (!state.carried) {
+      summary = "You left the photograph on the table. The corridor stayed itself. You arrived clean, and empty.";
+    } else if (state.corruption < 0.4) {
+      summary = "You smuggled the photograph. It is almost itself. The hall already took a little of the light around the face.";
+    } else {
+      summary = "You smuggled the photograph. The corridor paid itself out of the picture: the face is coming apart, and the hall followed you to the door.";
+    }
+    g.fillStyle = "#b8aa90";
+    g.font = "20px Georgia, serif";
+    wrapTextCentered(g, summary, W / 2, 220, 760, 30);
+
+    if (state.carried === "photo") {
+      const tmp = makeCanvas(280, 340);
+      const t = tmp.getContext("2d");
+      t.drawImage(photoBase, 0, 0);
+      drawPortrait(t, state.corruption, false);
+      g.drawImage(tmp, W / 2 - 70, 330, 140, 170);
+    }
+
+    const endReady = nowMs() >= state.endLockUntil;
+    const btnY = 540;
+    if (endReady) {
+      drawPulseButton("restart", W / 2 - 140, btnY, 280, 56, "Restart", 0);
+      g.fillStyle = "#8a8070";
+      g.font = "15px Georgia, serif";
+      g.textAlign = "center";
+      g.fillText("Click or press Enter", W / 2, btnY + 80);
+    } else {
+      g.save();
+      g.globalAlpha = 0.4;
+      g.fillStyle = "rgba(30,24,20,0.9)";
+      roundRect(g, W / 2 - 140, btnY, 280, 56, 4);
+      g.fill();
+      g.strokeStyle = "rgba(160,140,110,0.25)";
+      g.stroke();
+      g.fillStyle = "#b8aa90";
+      g.font = "18px Georgia, serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText("Restart", W / 2, btnY + 29);
+      g.textBaseline = "alphabetic";
+      g.restore();
+    }
+    g.fillStyle = "#6a6458";
+    g.font = "15px Georgia, serif";
+    g.textAlign = "center";
+    g.fillText("This is a first slice. The corridor will remember more later.", W / 2, 680);
+  }
+
+  function drawVhsOverlay() {
+    // Default tape path: Vesper §9.5 ladder step 2, Worn.
+    // ~300 lines, thin tracking at most once every 4 s, dL <= 0.08, no head-switch (Heavy only).
+    const g = ctx;
+    const c = state.carried ? state.corruption : 0;
+    const worn = state.scene !== "end";
+    const intensity = state.scene === "title" ? 0.22 : (0.28 + c * 0.15);
+    g.save();
+    if (worn) {
+      const lines = 300;
+      const sl = H / lines;
+      g.fillStyle = "rgba(0,0,0,0.028)";
+      for (let y = 0; y < lines; y++) g.fillRect(0, Math.floor(y * sl), W, 1);
+      // very slow grain, low alpha — not a luminance flash
+      const drift = Math.sin(state.time * (Math.PI * 2 / 8)) * 2;
+      g.globalAlpha = 0.035 * intensity;
+      g.drawImage(grain, drift, 0, W + 6, H + 6);
+      g.globalAlpha = 1;
+      // thin dim-only tracking bar, period 4.5 s (> 4 s cap), dL <= 0.08 linear
+      const period = 4.5, burst = 1.15;
+      const cyc = ((state.time % period) + period) % period;
+      if (cyc < burst) {
+        const u = cyc / burst;
+        const env = Math.sin(u * Math.PI); // ease in/out, one pulse
+        const dLin = 0.08 * env;
+        const a = 1 - Math.pow(1 - dLin, 1 / 2.2);
+        const barH = Math.max(2, sl * 1.6);
+        const barY = H * 0.62 + Math.sin(state.time * 0.4) * H * 0.04;
+        g.fillStyle = "rgba(0,0,0," + a.toFixed(4) + ")";
+        g.fillRect(0, barY, W, barH);
+      }
+    }
+    g.fillStyle = `rgba(220,220,200,${0.40 * intensity})`;
+    g.font = "16px Courier New, monospace";
+    g.textAlign = "right";
+    const t = state.time;
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60);
+    const clock = state.scene === "corridor"
+      ? `APR 31  04:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `NOV 09  22:${String(10 + (m % 50)).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    g.fillText(clock, W - 36, 40);
+    g.fillText(state.scene === "end" ? "STOP" : "PLAY ▶", W - 36, 64);
+    g.restore();
+  }
+
+  function drawFade() {
+    const a = fadeAlpha();
+    if (a <= 0) return;
+    // Snap near-opaque covers to a solid fill so a 0.999 alpha cannot leak
+    // the (much brighter) next scene for one frame, e.g. title → corridor.
+    if (a >= FADE_OPAQUE) {
+      ctx.fillStyle = "#040405";
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    ctx.fillStyle = `rgba(4,4,5,${a})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function renderFrame() {
+    uiHits.length = 0;
+    const s = state.scene;
+    if (s === "title") drawTitle();
+    else if (s === "inspect") drawInspectOverlay();
+    else if (s === "corridor") { drawCorridor(); drawCorridorHud(); }
+    else if (s === "end") drawEnd();
+    else { drawCorridor(); drawCorridorHud(); }
+    drawVhsOverlay();
+    drawFade();
+  }
+
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    dt = clamp(dt, 0, 0.05);
+    if (state.freeze || state.driven) dt = 0;
+    if (state.ready && dt > 0) update(dt);
+    renderFrame();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function snapshot() {
+    return {
+      scene: state.scene,
+      carried: state.carried,
+      decided: state.decided,
+      inspect: state.inspect,
+      corruption: Number(state.corruption.toFixed(4)),
+      camZ: Number(state.camZ.toFixed(3)),
+      camX: Number(state.camX.toFixed(3)),
+      yaw: Number(state.yaw.toFixed(4)),
+      pitch: Number(state.pitch.toFixed(4)),
+      facing: state.facing,
+      leg: state.leg,
+      atTable: state.atTable,
+      atEntry: state.atEntry,
+      nearVcr: state.nearVcr,
+      lingering: state.lingering,
+      fade: state.fade ? { phase: state.fade.phase, t: Number(state.fade.t.toFixed(3)), alpha: Number(fadeAlpha().toFixed(3)) } : null,
+      caption: state.caption,
+      ready: state.ready,
+      time: Number(state.time.toFixed(3)),
+    };
+  }
+
+  // --- in-page flash meter (HOUSE + STANDARD quick check) ---
+  const CUT_DL = 0.10; // flag any one-frame |d(screen meanL)| at or above this
+  const meter = {
+    on: false,
+    cols: 80,
+    rows: 45,
+    prevY: null,
+    prevR: null,
+    prevDir: null,
+    flashes: null,
+    redFlashes: null,
+    t: 0,
+    frames: 0,
+    maxGe3: 0,
+    maxGe4: 0,
+    maxGe3Win: 0,
+    maxGe4Win: 0,
+    maxRedGe3: 0,
+    anyGe4Cells: 0,
+    prevMeanL: null,
+    prevFadeAlpha: 0,
+    cuts: null,
+    maxCut: 0,
+    meanLog: null,
+  };
+
+  function lin(c) {
+    const x = c / 255;
+    return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  }
+
+  function startMeter() {
+    const n = meter.cols * meter.rows;
+    meter.on = true;
+    meter.prevY = new Float32Array(n);
+    meter.prevR = new Float32Array(n);
+    meter.prevDir = new Int8Array(n);
+    meter.flashes = Array.from({ length: n }, () => []);
+    meter.redFlashes = Array.from({ length: n }, () => []);
+    meter.prevY.fill(-1);
+    meter.prevR.fill(-1);
+    meter.prevDir.fill(0);
+    meter.t = 0;
+    meter.frames = 0;
+    meter.maxGe3 = 0;
+    meter.maxGe4 = 0;
+    meter.maxGe3Win = 0;
+    meter.maxGe4Win = 0;
+    meter.maxRedGe3 = 0;
+    meter.anyGe4Cells = 0;
+    meter.prevMeanL = null;
+    meter.prevFadeAlpha = 0;
+    meter.cuts = [];
+    meter.maxCut = 0;
+    meter.meanLog = [];
+    meter.first = true;
+  }
+
+  function meterPush(cellTimes, t, windowS) {
+    cellTimes.push(t);
+    const cut = t - windowS;
+    while (cellTimes.length && cellTimes[0] < cut) cellTimes.shift();
+    return cellTimes.length;
+  }
+
+  function sampleMeter() {
+    if (!meter.on) return;
+    const { cols, rows } = meter;
+    const cw = W / cols, ch = H / rows;
+    const img = ctx.getImageData(0, 0, W, H).data;
+    const n = cols * rows;
+    const Y = new Float32Array(n);
+    const Rv = new Float32Array(n);
+    const satRed = new Uint8Array(n);
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        let rs = 0, gs = 0, bs = 0, count = 0;
+        const x0 = (i * cw) | 0, y0 = (j * ch) | 0;
+        const x1 = ((i + 1) * cw) | 0, y1 = ((j + 1) * ch) | 0;
+        const step = 2;
+        for (let y = y0; y < y1; y += step) {
+          for (let x = x0; x < x1; x += step) {
+            const o = (y * W + x) * 4;
+            rs += img[o]; gs += img[o + 1]; bs += img[o + 2];
+            count++;
+          }
+        }
+        const r = rs / count, g = gs / count, b = bs / count;
+        const R = lin(r), G = lin(g), B = lin(b);
+        const yLin = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+        const idx = j * cols + i;
+        Y[idx] = yLin;
+        Rv[idx] = R;
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        satRed[idx] = (r > 160 && r - g > 40 && r - b > 40 && (mx - mn) > 50) ? 1 : 0;
+      }
+    }
+    let meanL = 0;
+    for (let i = 0; i < n; i++) meanL += Y[i];
+    meanL /= n;
+    const fadeA = fadeAlpha();
+    const fading = !!state.fade;
+    const midFade = fading && fadeA >= 0.05 && fadeA <= 0.95;
+    if (meter.first) {
+      meter.prevY.set(Y);
+      meter.prevR.set(Rv);
+      meter.prevMeanL = meanL;
+      meter.prevFadeAlpha = fadeA;
+      meter.meanLog.push({ frame: 0, t: Number(meter.t.toFixed(3)), meanL: Number(meanL.toFixed(4)), scene: state.scene, fade: fading ? state.fade.phase : null, alpha: Number(fadeA.toFixed(3)) });
+      meter.first = false;
+      meter.frames++;
+      return;
+    }
+    const dL = meanL - meter.prevMeanL;
+    const rec = { frame: meter.frames, t: Number(meter.t.toFixed(3)), meanL: Number(meanL.toFixed(4)), scene: state.scene, fade: fading ? state.fade.phase : null, alpha: Number(fadeA.toFixed(3)), dL: Number(dL.toFixed(4)) };
+    // Keep a compact log around scene/fade changes and any large dL, plus a 1 Hz heartbeat.
+    if (Math.abs(dL) >= 0.02 || fading !== (meter.prevFadeAlpha > 0) || meter.frames % 60 === 0) {
+      meter.meanLog.push(rec);
+    }
+    // Flag one-frame screen-mean cuts of |dL| >= 0.10 outside a declared mid-fade.
+    // A fade that has only just started (alpha ~0) or already ended does not exempt a pop.
+    if (Math.abs(dL) >= CUT_DL && !midFade) {
+      meter.cuts.push({
+        frame: meter.frames,
+        t: Number(meter.t.toFixed(3)),
+        meanL0: Number(meter.prevMeanL.toFixed(4)),
+        meanL1: Number(meanL.toFixed(4)),
+        dL: Number(dL.toFixed(4)),
+        cutRel: Number((Math.abs(dL) / Math.max(meter.prevMeanL, meanL, 1e-6)).toFixed(4)),
+        scene: state.scene,
+        fade: fading ? { phase: state.fade.phase, alpha: Number(fadeA.toFixed(3)) } : null,
+      });
+    }
+    if (Math.abs(dL) > meter.maxCut) meter.maxCut = Math.abs(dL);
+    meter.prevMeanL = meanL;
+    meter.prevFadeAlpha = fadeA;
+    const t = meter.t;
+    let ge3 = 0, ge4 = 0, redGe3 = 0;
+    const flag3 = new Uint8Array(n);
+    const flag4 = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const y0 = meter.prevY[i], y1 = Y[i];
+      const d = y1 - y0;
+      const darker = Math.min(y0, y1);
+      const trans = Math.abs(d) >= 0.10 && darker < 0.80;
+      if (trans) {
+        const dir = d > 0 ? 1 : -1;
+        if (meter.prevDir[i] && meter.prevDir[i] !== dir) {
+          const n1 = meterPush(meter.flashes[i], t, 1.0);
+          const redInv = satRed[i] || (Math.abs(Rv[i] - meter.prevR[i]) >= 0.10 && (Y[i] < 0.8 || meter.prevY[i] < 0.8) && Rv[i] > 0.4 && Rv[i] > Y[i] * 1.2);
+          if (redInv && dir !== meter.prevDir[i]) meterPush(meter.redFlashes[i], t, 1.0);
+          if (n1 >= 3) { ge3++; flag3[i] = 1; }
+          if (n1 >= 4) { ge4++; flag4[i] = 1; }
+        }
+        meter.prevDir[i] = dir;
+      }
+      const nr = meter.redFlashes[i].length;
+      if (nr >= 3) redGe3++;
+    }
+    meter.prevY.set(Y);
+    meter.prevR.set(Rv);
+    const frac3 = ge3 / n, frac4 = ge4 / n;
+    if (frac3 > meter.maxGe3) meter.maxGe3 = frac3;
+    if (frac4 > meter.maxGe4) meter.maxGe4 = frac4;
+    if (redGe3 / n > meter.maxRedGe3) meter.maxRedGe3 = redGe3 / n;
+    if (ge4 > meter.anyGe4Cells) meter.anyGe4Cells = ge4;
+
+    // 10° window ≈ 426×240 px at 1280×720 → 27×15 cells
+    const ww = 27, wh = 15;
+    let best3 = 0, best4 = 0;
+    for (let y = 0; y <= rows - wh; y += 2) {
+      for (let x = 0; x <= cols - ww; x += 2) {
+        let c3 = 0, c4 = 0;
+        for (let yy = 0; yy < wh; yy++) {
+          const row = (y + yy) * cols;
+          for (let xx = 0; xx < ww; xx++) {
+            const i = row + x + xx;
+            if (flag3[i]) c3++;
+            if (flag4[i]) c4++;
+          }
+        }
+        const a = ww * wh;
+        if (c3 / a > best3) best3 = c3 / a;
+        if (c4 / a > best4) best4 = c4 / a;
+      }
+    }
+    if (best3 > meter.maxGe3Win) meter.maxGe3Win = best3;
+    if (best4 > meter.maxGe4Win) meter.maxGe4Win = best4;
+    meter.frames++;
+  }
+
+  function meterResult() {
+    const house = meter.maxGe3Win <= 0.20 && meter.maxGe3Win <= 0.25;
+    const standard = meter.maxGe4Win <= 0.25;
+    const cuts = meter.cuts || [];
+    return {
+      frames: meter.frames,
+      seconds: Number(meter.t.toFixed(3)),
+      maxGe3Frac: Number(meter.maxGe3.toFixed(4)),
+      maxGe4Frac: Number(meter.maxGe4.toFixed(4)),
+      maxGe3Window: Number(meter.maxGe3Win.toFixed(4)),
+      maxGe4Window: Number(meter.maxGe4Win.toFixed(4)),
+      maxRedGe3Frac: Number(meter.maxRedGe3.toFixed(4)),
+      HOUSE: house && meter.maxGe3Win <= 0.20 ? "PASS" : (meter.maxGe3Win <= 0.25 ? "WARN" : "FAIL"),
+      STANDARD: standard ? "PASS" : "FAIL",
+      targetGe3: 0.20,
+      limitGe3: 0.25,
+      limitGe4: 0.25,
+      cutLimit: CUT_DL,
+      maxCut: Number(meter.maxCut.toFixed(4)),
+      cuts: cuts.length,
+      cutList: cuts,
+      CUTS: cuts.length === 0 ? "PASS" : "FAIL",
+      meanLog: meter.meanLog || [],
+    };
+  }
+
+  window.__slice = {
+    ready: () => state.ready,
+    getState: snapshot,
+    reset: resetGame,
+    unlock() {
+      state.inputLockUntil = 0;
+      state.endLockUntil = 0;
+      state.titleLockUntil = 0;
+      state.choiceLockUntil = 0;
+      state.needKeyRelease = false;
+    },
+    activate,
+    begin: beginFromTitle,
+    choose(which) { resolveChoice(which === "take" || which === "photo" || which === "smuggle"); },
+    drive() { state.driven = true; },
+    undrive() { state.driven = false; lastTs = 0; },
+    step(dt) {
+      if (!state.ready) return snapshot();
+      update(typeof dt === "number" ? dt : 1 / 60);
+      renderFrame();
+      if (meter.on) {
+        meter.t += typeof dt === "number" ? dt : 1 / 60;
+        sampleMeter();
+      }
+      return snapshot();
+    },
+    startMeter,
+    meterResult,
+    stopMeter() { meter.on = false; return meterResult(); },
+    png() { return canvas.toDataURL("image/png"); },
+    setCamZ(z) { state.camZ = z; if (state.scene === "corridor") updateCorridor(0); },
+    setLook(yaw, pitch) {
+      if (state.fade || state.scene !== "corridor") return snapshot();
+      if (typeof yaw === "number") state.yaw = clamp(yaw, -YAW_MAX, YAW_MAX);
+      if (typeof pitch === "number") state.pitch = clamp(pitch, -PITCH_MAX, PITCH_MAX);
+      return snapshot();
+    },
+    look(dyaw, dpitch) { applyLook(dyaw || 0, dpitch || 0); return snapshot(); },
+    lookLimits: { pitch: PITCH_MAX, yaw: YAW_MAX },
+    hold(dir) {
+      pointer.down = false;
+      keys.w = keys.W = keys.ArrowUp = dir > 0;
+      keys.s = keys.S = keys.ArrowDown = dir < 0;
+      if (dir === 0) {
+        keys.w = keys.W = keys.ArrowUp = false;
+        keys.s = keys.S = keys.ArrowDown = false;
+        state.holdT = 0;
+        state.stepLeft = 0;
+      } else if (state.holdT < 0.12) state.holdT = 0.12;
+    },
+  };
+
+  window.addEventListener("pageshow", (e) => { if (e.persisted) resetGame(); });
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  resetGame();
+  buildTextures();
+  fitCanvas();
+  state.ready = true;
+  rafId = requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
