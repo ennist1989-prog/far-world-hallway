@@ -1,33 +1,36 @@
-# Far World — Hallway Pilot (v4.7)
+# Far World — First Floor (playable slice)
 
-A self-contained playable 3D hallway slice for Far World. Open the site in a desktop browser and click to start.
+A public research pilot, not the full game. It is a separate project from [Lantern Night](https://github.com/ennist1989-prog/lantern-night).
 
 **Play:** https://ennist1989-prog.github.io/far-world-hallway/
 
-This is a public research pilot, not the full game. It is a separate project from [Lantern Night](https://github.com/ennist1989-prog/lantern-night).
+The start page links the rooms in play order. Open a room in Chrome or Firefox and click to start.
+
+1. [Hallway](https://ennist1989-prog.github.io/far-world-hallway/first-floor/hallway.html) (v4.12, sha256 `a15c37c9a4d4ffac28ce5030f2180c5d99f6f3ccc55309a00408f39c96197495`)
+2. [Teddy’s room](https://ennist1989-prog.github.io/far-world-hallway/first-floor/teddy-room.html) (sha256 `9f9e4cb7c5b00273e55a1cba7f2e3eabd1900389794235ebb02bcf3384c53c95`)
+
+The earlier hallway, v4.7, remains at [ /v4.7/ ](https://ennist1989-prog.github.io/far-world-hallway/v4.7/) (sha256 `41fe5344dbcd17cf3244380729438629a0f3097abcad7fb2e594d5a0fe1f89f6`).
+
+These three HTML files are frozen, self-contained builds. They were copied byte-for-byte and are not edited in this repo.
 
 ## Controls
 
 - Click once to start
-- Walk with `W` or by holding the mouse button
-- Look with the mouse, or drag if pointer lock is unavailable
-- Arrow keys turn in place
-- Press `E`, Enter, or click to pick up
-- Press `V` (or the Visual effects button) to choose Off / Low / Medium / Full; the choice is saved
-- Press `O` to switch effects off and back on (crossfaded)
+- Walk with `W` `A` `S` `D` or the arrow keys; hold the mouse button to walk in some views
+- Look with the mouse (left/right and up/down). Click to lock the pointer
+- Press `E`, Enter, or click to pick up or use
+- Visual-effects presets (Off / Low / Medium / Full) are available in the hallway and Teddy’s room
 
 ## Credits
 
-Textures and paintings are real photo scans or public-domain art reproductions (CC0 / public domain). None are AI-generated.
+Textures, models, and paintings are CC0, public-domain art reproductions, or original work. None are AI-generated. No photographs of real people, pets, or family are shipped.
 
-Full source, license, and file credits are in [TEXTURES.md](TEXTURES.md). Sources include Poly Haven (CC0), ambientCG (CC0), Cooper Hewitt / Wikimedia Commons (CC0 / public domain), and public-domain paintings from Wikimedia Commons.
+Hallway sources are listed in [TEXTURES.md](TEXTURES.md): Poly Haven (CC0), ambientCG (CC0), Cooper Hewitt / Wikimedia Commons (CC0 / public domain), and public-domain paintings from Wikimedia Commons. Teddy’s room uses Poly Haven CC0 scans, MakeHuman/MPFB CC0 characters, original geometry, and a Josh Woodward CC BY 4.0 music bed (credited in the in-game Settings). three.js r147 is MIT.
 
 ## Photosensitivity
 
-v4.7 is an epilepsy-safety update. A first-launch prompt sets visual effects intensity (default Low). Every preset stays inside the Far World house limits: no more than 2 flashes per second, fixture brightness 0.88–1.00 with eased dips at 1 Hz or slower, static low-contrast scanlines, a VCR colon that changes at most once per second, and eased full-screen fades of at least 400 ms (including the ending and the effects toggle). This does not make the pilot safe for everyone.
+Each room includes visual-effects presets. This does not make the pilot safe for everyone. If you are sensitive to motion or light, start on a lower preset or skip the slice.
 
-## Build
+## Rollback
 
-The site serves a single self-contained `index.html` (hallway v4.7).
-
-- sha256: `41fe5344dbcd17cf3244380729438629a0f3097abcad7fb2e594d5a0fe1f89f6`
+The pre-publish live commit (v4.7 at the site root) is tagged `pre-playable-level-2026-11-27`.
