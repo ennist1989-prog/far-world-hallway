@@ -138,7 +138,7 @@
   let noise, grain, photoBase;
   let audio = null;
   let rafId = 0;
-  let lookBlur = null;
+  let lookBlur = null; // unused: look-speed frame blend removed (playtest-fixes t490u)
   let lastYawForBlur = 0, lastPitchForBlur = 0;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -150,7 +150,7 @@
   }
 
   const PITCH_MAX = 80 * Math.PI / 180;
-  const YAW_MAX = 80 * Math.PI / 180;
+  const YAW_MAX = Infinity; // playtest-fixes (t490u): full 360° yaw; pitch stays ±80°
   const MOUSE_SENS = 0.0022;
   const STRAFE_LIMIT = 22;
 
@@ -902,19 +902,7 @@
     g.fillStyle = vg;
     g.fillRect(0, 0, W, H);
 
-    // Look-speed blur (HOUSE §9.20): smear only the world while yaw/pitch is moving,
-    // so fixture edges do not invert a 10° window three times a second.
-    if (!lookBlur) lookBlur = makeCanvas(W, H);
-    if (lookBlur.width !== W || lookBlur.height !== H) { lookBlur.width = W; lookBlur.height = H; }
-    const dLook = Math.hypot(state.yaw - lastYawForBlur, state.pitch - lastPitchForBlur);
-    const lookRate = dLook / Math.max(state.dt || 1 / 60, 1 / 120);
-    if (lookRate > 0.6 && !state.fade) {
-      const a = clamp((lookRate - 0.6) / 3.0, 0, 0.55);
-      g.globalAlpha = a;
-      g.drawImage(lookBlur, 0, 0);
-      g.globalAlpha = 1;
-    }
-    lookBlur.getContext("2d").drawImage(canvas, 0, 0);
+    // playtest-fixes (t490u): no look-speed frame blend / smear while panning.
     lastYawForBlur = state.yaw;
     lastPitchForBlur = state.pitch;
   }

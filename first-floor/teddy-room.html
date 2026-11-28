@@ -4348,15 +4348,12 @@ const downMat = new THREE.ShaderMaterial({ uniforms: { tHi: { value: null }, uMo
 const MOT = { y: null, p: null, shutter: 2.5, exp: 2.5 / 18 }; // shutter in render intervals at the 18 fps film cadence (2.5 = smear over 2.5× the per-render displacement)
 // v2 final: without the film cadence (Off/Low/Medium render every frame) the smear is time-based — angular velocity × exp (0.139 s, the same
 // smear Full gets at 18 fps). A per-frame 2.5× smear at 60 fps was 3.3× shorter and let 20–60 px texture periods strobe through cells.
-function updateMotionBlur(cam, dtR) { const y = cam.rotation.y, p = cam.rotation.x; let dy = 0, dp = 0; if (MOT.y !== null) { dy = y - MOT.y; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; dp = p - MOT.p; } MOT.y = y; MOT.p = p;
-  if (Math.abs(dy) > 0.35 || Math.abs(dp) > 0.35) { dy = dp = 0; } // a cut/teleport: no smear
-  // F2: longer camera-speed smear while the player looks. Leave the scripted reveal alone so fade legs
-  // and the residual settle stay as in 4ff66296, jitter aside. Applied at every preset: Low/Off have a
-  // sharper grade (no 18 fps cadence) and otherwise failed the reversing-look HOUSE gate.
-  let shutter = MOT.shutter, exp = MOT.exp;
-  const boost = !(typeof SEQ !== "undefined" && SEQ.reveal);
-  if (boost) { shutter = 6.0; exp = 6.0 / 18; }
-  const vf = cam.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * cam.aspect); const k = dtR > 0 ? exp / dtR : shutter; downMat.uniforms.uMot.value.set(clamp(-dy * k / hf, -0.15, 0.15), clamp(dp * k / vf, -0.15, 0.15)); }
+function updateMotionBlur(cam, dtR) {
+  // playtest-fixes (t490u): no look-tied motion blur / afterimage / frame smear.
+  // Keep the 16-tap down-pass shader, but always sample the current frame only.
+  MOT.y = cam.rotation.y; MOT.p = cam.rotation.x;
+  downMat.uniforms.uMot.value.set(0, 0);
+}
 downScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), downMat));
 let rtFresh = false; // v2 final H3: a new (empty) RT must be rendered in the same frame, or the 18 fps cadence shows one black frame
 function makeRT(w, h) { rtFresh = true;
@@ -5137,14 +5134,10 @@ const PL = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw, pitch: SPAWN.pitch, vx: 0, 
 const keys = {};
 // v2 QA H1 (camera-turn general flash): the VIEW slews toward the look target at a capped angular rate. Input (mouse, drag, touch, keys)
 // and scripted turns (autowalk, reveal) set PL.yaw/pitch; the camera follows at ≤ LOOK_RATE. Teleports/poses snap (VIEW.snap).
-const LOOK_RATE = { yaw: 0.6, pitch: 0.45 }; const TURN_MAX = 0.55, TURN_ACC = 1.2; /* rad/s, rad/s² (keyboard/stick turn eases in over ~0.45 s) */ const PITCH_MAX = 80 * Math.PI / 180; const VIEW = { yaw: SPAWN.yaw, pitch: SPAWN.pitch, snap: true, rate: 0, vy: 0, vp: 0 };
+const LOOK_RATE = { yaw: 100, pitch: 100 }; const TURN_MAX = 1.6, TURN_ACC = 8; /* rad/s, rad/s² — playtest-fixes: direct keyboard look, no ease-in lag */ const PITCH_MAX = 80 * Math.PI / 180; const VIEW = { yaw: SPAWN.yaw, pitch: SPAWN.pitch, snap: true, rate: 0, vy: 0, vp: 0 };
 function wrapPi(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
-function lookRate() { const rm = fxEff("motion") < 0.5 ? 0.75 : 1;
-  // F2 last resort: slightly lower the Full view cap in this room only. Mouse/keyboard sensitivity is unchanged;
-  // the camera still follows at a capped rate. Medium/Low/Off already run at 0.75 of LOOK_RATE (0.45 yaw).
-  let yaw = LOOK_RATE.yaw * rm, pitch = LOOK_RATE.pitch * rm;
-  if (rm === 1 && (FX.unr || FX.preset === "full")) yaw = Math.min(yaw, 0.48);
-  return { yaw, pitch }; }
+function lookRate() { // playtest-fixes (t490u): look is uncapped / direct; kept as a hook for __pilot / diagnostics.
+  return { yaw: LOOK_RATE.yaw, pitch: LOOK_RATE.pitch }; }
 const touch = { joyId: null, jx: 0, jy: 0, jcx: 0, jcy: 0, lookId: null, lx: 0, ly: 0, tStart: 0, moved: 0 };
 const mouse = { drag: false, lx: 0, ly: 0, downAt: 0, moved: 0 };
 function collide(nx, nz) {
@@ -5165,7 +5158,8 @@ function collide(nx, nz) {
 function updatePlayer(dt) {
   let fx = 0, fz = 0;
   if (PL.control && !UI.panel && !SEQ.lockInput && !isOn("settings")) { // v2 QA #4: no walking while Settings is open
-    if (keys.KeyW || keys.ArrowUp) fz += 1; if (keys.KeyS || keys.ArrowDown) fz -= 1; if (keys.KeyA) fx -= 1; if (keys.KeyD) fx += 1;
+    // playtest-fixes: accept e.code (KeyW) and e.key (w/W) so headless harnesses and real keyboards both move
+    if (keys.KeyW || keys.w || keys.W || keys.ArrowUp) fz += 1; if (keys.KeyS || keys.s || keys.S || keys.ArrowDown) fz -= 1; if (keys.KeyA || keys.a || keys.A) fx -= 1; if (keys.KeyD || keys.d || keys.D) fx += 1;
     const tdir = (keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0); PL.turnV = PL.turnV || 0; PL.turnV += clamp(tdir * TURN_MAX - PL.turnV, -TURN_ACC * dt, TURN_ACC * dt); PL.yaw += PL.turnV * dt; // v2 QA H1: was 1.6 rad/s instant; now eased to TURN_MAX
     if (touch.joyId !== null) { fx += clamp(touch.jx, -1, 1); fz += clamp(-touch.jy, -1, 1); }
   }
@@ -5177,36 +5171,15 @@ function updatePlayer(dt) {
   const [nx, nz] = collide(PL.x + PL.vx * dt, PL.z + PL.vz * dt); PL.x = nx; PL.z = nz;
   const spd = Math.hypot(PL.vx, PL.vz); PL.bob += dt * spd * 5.2;
   PL.pitch = clamp(PL.pitch, -PITCH_MAX, PITCH_MAX); // pointer-lock pitch ±80°, no roll (camera.rotation.z stays 0)
-  if (PL.hold > 0) { // establishing hold: soft look-limit ±15° yaw, ±10° pitch (Cine v1 review)
-    PL.hold -= dt; PL.yaw = clamp(PL.yaw, PL.holdYaw - 0.26, PL.holdYaw + 0.26); /* v2: ±15° (Cine) */ PL.pitch = clamp(PL.pitch, PL.holdPitch - 0.17, PL.holdPitch + 0.17); if (PL.hold <= 0) PL.control = true;
-  }
-  const bobAmp = 0.012 * fxEff("motion") * (1 + FX.unrL);
-  camera.position.set(PL.x, EYE + Math.sin(PL.bob) * bobAmp * Math.min(1, spd), PL.z);
-  if (VIEW.snap) { VIEW.yaw = PL.yaw; VIEW.pitch = PL.pitch; VIEW.snap = false; VIEW.rate = 0; VIEW.vy = 0; VIEW.vp = 0; }
-  else { const R = lookRate(); const y0 = VIEW.yaw, p0 = VIEW.pitch;
-    const dy = wrapPi(PL.yaw - VIEW.yaw), dp = PL.pitch - VIEW.pitch;
-    // F2: at Full/Medium, damp view reversals so high-contrast edges do not immediately retrace the same cells.
-    // Scripted reveal/exit/realtape keep the old rate cap so those runs stay identical to 4ff66296 aside from jitter.
-    const playerLook = PL.control && !SEQ.reveal && !SEQ.ending && !SEQ.realtape; // all presets: Low/Off also need reversal damping (sharper grade, same 0.45 rad/s cap)
-    if (playerLook) {
-      let ty = clamp(dy / Math.max(dt, 1e-4), -R.yaw, R.yaw);
-      let tp = clamp(dp / Math.max(dt, 1e-4), -R.pitch, R.pitch);
-      // F2 pass 4: cap the combined yaw+pitch view rate at the yaw cap so a diagonal look is no faster
-      // than a yaw-only look (independent axis caps allowed hypot 0.64–0.66 rad/s and failed Low pitch+yaw).
-      const cap = R.yaw, hyp = Math.hypot(ty, tp);
-      if (hyp > cap) { ty *= cap / hyp; tp *= cap / hyp; }
-      const accY = (ty * VIEW.vy < 0) ? 2.2 : 10;
-      const accP = (tp * VIEW.vp < 0) ? 2.2 : 10;
-      VIEW.vy += clamp(ty - VIEW.vy, -accY * dt, accY * dt);
-      VIEW.vp += clamp(tp - VIEW.vp, -accP * dt, accP * dt);
-      VIEW.yaw += VIEW.vy * dt; VIEW.pitch += VIEW.vp * dt;
-    } else {
-      VIEW.vy = 0; VIEW.vp = 0;
-      VIEW.yaw += clamp(dy, -R.yaw * dt, R.yaw * dt);
-      VIEW.pitch += clamp(dp, -R.pitch * dt, R.pitch * dt);
-    }
-    PL.yaw = VIEW.yaw + clamp(wrapPi(PL.yaw - VIEW.yaw), -0.45, 0.45); PL.pitch = VIEW.pitch + clamp(PL.pitch - VIEW.pitch, -0.35, 0.35); // input can't run far ahead of the view
-    VIEW.rate = dt > 0 ? Math.hypot(wrapPi(VIEW.yaw - y0), VIEW.pitch - p0) / dt : 0; }
+  // playtest-fixes (t490u): no yaw clamp — full 360° horizontal look. The short establishing hold still
+  // eases in (walk is already enabled); it no longer limits yaw or pitch.
+  if (PL.hold > 0) { PL.hold -= dt; if (PL.hold <= 0) PL.control = true; }
+  // playtest-fixes: no head-bob on look or walk — stable camera height
+  camera.position.set(PL.x, EYE, PL.z);
+  // playtest-fixes: look is direct (no rate cap, no reversal damping, no view lag / wobble)
+  const y0 = VIEW.yaw, p0 = VIEW.pitch;
+  VIEW.yaw = PL.yaw; VIEW.pitch = PL.pitch; VIEW.snap = false; VIEW.vy = 0; VIEW.vp = 0;
+  VIEW.rate = dt > 0 ? Math.hypot(wrapPi(VIEW.yaw - y0), VIEW.pitch - p0) / dt : 0;
   camera.rotation.set(VIEW.pitch, VIEW.yaw, 0);
   return spd;
 }
@@ -5224,14 +5197,14 @@ window.addEventListener("keydown", e => {
   if (ae && ae.id === "credits" && topModal() && topModal().contains(ae) && /^(ArrowUp|ArrowDown|PageUp|PageDown|Home|End|Space)$/.test(e.code)) { // v2.1d (QA F5): the credits box scrolls by keyboard
     const step = /^Arrow/.test(e.code) ? 40 : ae.clientHeight * 0.9; const top = e.code === "Home" ? 0 : e.code === "End" ? ae.scrollHeight : ae.scrollTop + (/(Up|PageUp)$/.test(e.code) || (e.code === "Space" && e.shiftKey) ? -step : step);
     ae.scrollTop = clamp(top, 0, ae.scrollHeight); e.preventDefault(); return; }
-  keys[e.code] = true;
+  keys[e.code] = true; if (e.key) keys[e.key] = true;
   if (UI.panel === "puzzle" && puzzleKey(e)) { e.preventDefault(); return; }
   if (e.code === "Escape") { if (UI.panel) { if (panelReady()) closePanel(); } else toggleSettings(); return; }
   if (e.code === "KeyE" || e.code === "Enter" || e.code === "Space") { if (e.repeat) return; if (!panelReady()) { e.preventDefault(); return; } if (UI.panel) { if (UI.panel !== "puzzle") closePanel(); } else if (!isOn("settings")) tryInteract(); e.preventDefault(); }
   if (e.code === "KeyH") showNextHint();
   if (e.code === "KeyO") { /* quick toggle Off <-> previous (incl. custom slider values), eased */ toggleOff(); }
 });
-window.addEventListener("keyup", e => { keys[e.code] = false; });
+window.addEventListener("keyup", e => { keys[e.code] = false; if (e.key) keys[e.key] = false; });
 canvas.addEventListener("mousedown", e => { audioInit(); if (AU.ctx && AU.ctx.state === "suspended") AU.ctx.resume(); if (IS_TOUCH) return; mouse.drag = true; mouse.lx = e.clientX; mouse.ly = e.clientY; mouse.downAt = performance.now(); mouse.moved = 0; });
 window.addEventListener("mousemove", e => { if (IS_TOUCH) return; if (document.pointerLockElement === canvas) { look(e.movementX, e.movementY, 0.0022); return; } if (mouse.drag) { const dx = e.clientX - mouse.lx, dy = e.clientY - mouse.ly; mouse.moved += Math.abs(dx) + Math.abs(dy); mouse.lx = e.clientX; mouse.ly = e.clientY; look(dx, dy, 0.004); } });
 window.addEventListener("mouseup", e => { if (IS_TOUCH || !mouse.drag) return; mouse.drag = false;
@@ -5810,7 +5783,7 @@ function updatePost(dt, fadeMul) {
   if (QF.breathe) u.uBreathe.value = 0; if (QF.track) { u.uTrack.value = 0; u.uDrop.value.set(0, 0, 0, 0); } // QA isolation only
   u.uFade.value = fadeMul;
   u.uExposure.value = STATE.exposure * (real ? 1.15 : 1);
-  STATE.cadence = (fl > 0.3) ? 18 : 0;
+  STATE.cadence = 0; // playtest-fixes: always render every frame so a look is not a shaky 18 fps stutter
   // dust specks (Super 8 layer), small and dark, re-rolled at the film cadence
   STATE.dustT -= dt; if (!(STATE.dustT > 0)) { STATE.dustT = 1 / 18; const n = real ? (fl > 0 ? 4 : 0) : (fl > 0 ? Math.round(lerp(0, 3, clamp((e - 1) / 3, 0, 1))) : 0);
     for (let i = 0; i < 4; i++) { const d = u.uDust.value[i]; if (i < n && !QF.dust && dustRand() < 0.6) { let x = dustRand(), y = dustRand(); if (e < 3 && !real && Math.abs(x - 0.5) < 0.3 && Math.abs(y - 0.5) < 0.3) { x = x < 0.5 ? x * 0.33 : 1 - (1 - x) * 0.33; } d.set(x, y, 0.0022 + dustRand() * 0.0013, 0.3 + 0.2 * dustRand()); /* v2 §9.7 H4g: specks ≤2.5 px radius at 720p, ≤50 % dark — a speck moves a 16-px cell mean by ≤6 % (was up to 7 px / 65 %: −25 %) */ } else d.set(0, 0, 0, 0); } }
@@ -5883,7 +5856,7 @@ function beginTape() {
   const tn = $("tapnote"); tn.textContent = IS_TOUCH ? "Left thumb: walk · right thumb: look · tap things (or Use)" : "WASD / arrows: walk · drag or click to look · E: use · H: hint · Esc: settings";
   if (IS_TOUCH) $("joy").style.display = "block";
   if (!P.autowalk) { fadeShow(tn, "block"); later(IS_TOUCH ? 8 : 20, () => fadeHide(tn)); later(45, () => { if (!PR.key && !UI.panel && !SEQ.ending && !SEQ.realtape && !SEQ.reveal && stage() === "key") caption("", "Teddy kept the important stuff locked.", 5); }); }
-  if (P.start) applyStart(P.start); else { PL.hold = 3.75; PL.control = false; }
+  if (P.start) applyStart(P.start); else { PL.hold = 3.75; PL.control = true; } // playtest-fixes: WASD works immediately; hold is intro-only, not a walk lock
   if (P.autowalk) { buildAutoRoute(); AUTO.on = true; PL.hold = 0; PL.control = true; }
   if (!P.start) caption("", "November 1993. Teddy's room. The door is held open a hand's width.", 5);
   if (SAVE.carried && SAVE.carried.length && !P.start) later(5.5, () => { const nm = { tape: "the cassette", photo: "the photo" }; caption("", "From the corridor you carried " + SAVE.carried.map(c => nm[c] || c).join(" and ") + ".", 4); });
@@ -5939,7 +5912,7 @@ window.__pilot = {
   getState: () => ({ stage: stage(), progress: Object.assign({}, PR), panel: UI.panel, faceBlur: +FACEBLUR.now.toFixed(3), reveal: SEQ.reveal ? SEQ.reveal.phase : null, realtape: !!SEQ.realtape, ending: !!SEQ.ending, ended: STATE.ended,
     shifted: !!SAVE.shifted, clues: SAVE.clues.slice(), hints: { shown: HS.shown, available: hintsAvailable() }, player: { x: +PL.x.toFixed(3), z: +PL.z.toFixed(3), yaw: +PL.yaw.toFixed(3), pitch: +PL.pitch.toFixed(3) },
     auto: { on: AUTO.on, done: !!AUTO.done, fail: AUTO.fail || null, step: AUTO.i, of: AUTO.steps.length, moves: AUTO.moves || 0, log: AUTO.log.slice(-40) }, t: +GT.toFixed(3), renders: STATE.renders, save: JSON.parse(JSON.stringify(SAVE)) }),
-  lookTo: (yaw, pitch) => { PL.yaw = yaw; if (pitch !== undefined) PL.pitch = pitch; }, // like input: the view slews at ≤ LOOK_RATE
+  lookTo: (yaw, pitch) => { PL.yaw = yaw; if (pitch !== undefined) PL.pitch = pitch; VIEW.yaw = PL.yaw; VIEW.pitch = PL.pitch; }, // playtest-fixes: look is direct
   view: () => ({ yaw: VIEW.yaw, pitch: VIEW.pitch, rate: VIEW.rate }),
   readLin: () => { const gl = renderer.getContext(); const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight; const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); const LUT = new Float32Array(256); for (let i = 0; i < 256; i++) { const c = i / 255; LUT[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); } const L = new Float32Array(w * h); for (let i = 0; i < w * h; i++) L[i] = 0.2126 * LUT[px[i * 4]] + 0.7152 * LUT[px[i * 4 + 1]] + 0.0722 * LUT[px[i * 4 + 2]]; return { w, h, L }; },
   setPose: (x, z, yaw, pitch) => { PL.x = x; PL.z = z; if (yaw !== undefined) PL.yaw = yaw; if (pitch !== undefined) PL.pitch = pitch; VIEW.snap = true; },
