@@ -11,6 +11,7 @@ horror/amnesia-the-dark-descent.md  8fc12856aa2ff9d02d2c44f802bdc2f8338bd99d
 horror/backrooms-games.md  98af64073ab0efa42d7678c8b703441baf881b45
 horror/condemned-barts-behaviour-sheet.md  8889e69bf5a2d4e8fa01a62e6c88771d81918a4e
 horror/dark-souls-statues-and-storytelling.md  65682f5cf6080f1dcf5bad3b6e3e42e61dbb70f3
+horror/decision-sheet.md  3f5baa7332f83a4d78b3ccd30b5ff29f9c1099eb
 horror/hex-review.md  478ff96bafb393158dd36a6369d763335dbaa3f9
 horror/impact-frame-and-pacing.md  fc55ead06870bbfad19930e9e02c2bb5acff784d
 horror/lock-spec.md  41da92ae2a336a45455efae840bea73aa67f4bc7
